@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  oracle-watcher:
+    build: .
+    container_name: oracle-watcher
+    restart: always
+    ports:
+      - "8088:8088"
+    env_file:
+      - .env
+    volumes:
+      # Montamos la clave privada para que el contenedor pueda leerla
+      - ${OCI_PRIVATE_KEY_PATH}:/app/key.pem:ro
+
+  # Watchtower: Actualiza automáticamente tus contenedores cuando subes cambios
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 3600 --cleanup
