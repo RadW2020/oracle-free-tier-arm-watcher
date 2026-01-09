@@ -38,8 +38,8 @@ jobs:
         with:
           context: .
           push: true
-          # IMPORTANTE: Compilamos para AMD64 (Intel/AMD) y ARM64 (Oracle Ampere/Apple Silicon)
-          platforms: linux/amd64,linux/arm64
+          # Solo ARM64 para Oracle Free Tier (Ampere A1)
+          platforms: linux/arm64
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
