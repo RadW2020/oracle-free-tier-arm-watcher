@@ -52,8 +52,8 @@ func getCompartmentID() string {
 	return compartmentID
 }
 
-// getOCIUsage obtiene todo el uso de OCI
-// context.Background() es el contexto por defecto (usado para cancelación/timeouts)
+// getOCIUsage obtiene todo el uso de OCI de forma paralela
+// Usa goroutines para hacer las llamadas a la API de OCI concurrentemente
 func getOCIUsage() (*AllUsage, error) {
 	provider, err := createConfigProvider()
 	if err != nil {
@@ -62,13 +62,49 @@ func getOCIUsage() (*AllUsage, error) {
 
 	compartmentID := getCompartmentID()
 
-	// En Go, usamos goroutines y channels para concurrencia
-	// Pero para simplicidad, aquí lo hacemos secuencial
-	computeUsage := getComputeUsage(provider, compartmentID)
-	blockStorageUsage := getBlockStorageUsage(provider, compartmentID)
-	objectStorageUsage := getObjectStorageUsage(provider, compartmentID)
-	loadBalancerUsage := getLoadBalancerUsage(provider, compartmentID)
-	publicIPUsage := getPublicIPsUsage(provider, compartmentID)
+	// Usar goroutines para obtener datos en paralelo
+	// Esto reduce el tiempo de respuesta significativamente
+	var (
+		computeUsage       ComputeUsage
+		blockStorageUsage  StorageUsage
+		objectStorageUsage ObjectStorageUsage
+		loadBalancerUsage  LoadBalancerUsage
+		publicIPUsage      UsageMetric
+	)
+
+	// Canal para sincronización (esperamos 5 goroutines)
+	done := make(chan bool, 5)
+
+	// Lanzar todas las consultas en paralelo
+	go func() {
+		computeUsage = getComputeUsage(provider, compartmentID)
+		done <- true
+	}()
+
+	go func() {
+		blockStorageUsage = getBlockStorageUsage(provider, compartmentID)
+		done <- true
+	}()
+
+	go func() {
+		objectStorageUsage = getObjectStorageUsage(provider, compartmentID)
+		done <- true
+	}()
+
+	go func() {
+		loadBalancerUsage = getLoadBalancerUsage(provider, compartmentID)
+		done <- true
+	}()
+
+	go func() {
+		publicIPUsage = getPublicIPsUsage(provider, compartmentID)
+		done <- true
+	}()
+
+	// Esperar a que todas las goroutines terminen
+	for i := 0; i < 5; i++ {
+		<-done
+	}
 
 	return &AllUsage{
 		Compute:       computeUsage,

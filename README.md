@@ -10,12 +10,14 @@ Servicio en Go para monitorear el uso de Oracle Cloud Free Tier y evitar cargos 
 
 ## Endpoints
 
-| Endpoint | Descripción |
-|----------|-------------|
-| `GET /usage` | Uso detallado de todos los recursos con porcentajes |
-| `GET /status` | Estado rápido (OK/ATTENTION/WARNING/CRITICAL) |
-| `GET /health` | Health check simple |
-| `GET /limits` | Límites de la Free Tier |
+| Endpoint | Descripción | Auth |
+|----------|-------------|------|
+| `GET /usage` | Uso detallado de todos los recursos con porcentajes | ✅ |
+| `GET /status` | Estado rápido (OK/ATTENTION/WARNING/CRITICAL) | ✅ |
+| `GET /health` | Health check simple | ❌ |
+| `GET /limits` | Límites de la Free Tier | ✅ |
+
+> **🔒 Autenticación:** Los endpoints protegidos requieren el header `X-API-Key` con tu clave configurada en el `.env`.
 
 ## Instalación de Go
 
@@ -67,12 +69,28 @@ cp .env.example .env
 
 ```env
 PORT=8088
+
+# API Key para proteger los endpoints (recomendado)
+API_KEY=$(openssl rand -hex 32)
+
 OCI_TENANCY_ID=ocid1.tenancy.oc1..xxxxx
 OCI_USER_ID=ocid1.user.oc1..xxxxx
 OCI_FINGERPRINT=xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx
 OCI_PRIVATE_KEY_PATH=/path/to/your/oci_api_key.pem
 OCI_REGION=eu-madrid-1
 OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxxxx
+```
+
+### 🔒 Seguridad
+
+Si configuras `API_KEY`, **todos los endpoints (excepto `/health`) requerirán autenticación**:
+
+```bash
+# Sin API Key (público)
+curl http://localhost:8088/usage
+
+# Con API Key
+curl -H "X-API-Key: tu-clave-secreta" http://localhost:8088/usage
 ```
 
 ## Ejemplo de respuesta `/usage`
@@ -174,6 +192,9 @@ sudo systemctl start oracle-watcher
 4. **Error handling** - Errores como valores, no excepciones
 5. **HTTP Server** - Librería estándar muy potente
 6. **JSON tags** - Controlan serialización
+7. **Goroutines** - Concurrencia nativa (llamadas paralelas a OCI)
+8. **Channels** - Comunicación entre goroutines
+9. **Middleware** - Patrón para autenticación HTTP
 
 ## 🚀 Configuración de la Instancia (¡IMPORTANTE!)
 
@@ -201,6 +222,15 @@ Aunque este monitor es fiable, la red de seguridad definitiva es configurar una 
    
 *Si por algún error cualquier cosa te gasta 0,01€, Oracle te enviará un email inmediatamente.*
 
+## ✅ Mejoras Implementadas
+
+- [x] **🔒 Autenticación con API Key:** Protege los endpoints con `X-API-Key` header
+- [x] **📊 Logging estructurado:** Logs en JSON con zerolog para mejor observabilidad  
+- [x] **⚡ Llamadas paralelas a OCI:** Uso de goroutines para reducir tiempo de respuesta
+- [x] **✔️ Validación de credenciales:** Verifica que `.env` esté correctamente configurado al iniciar
+- [x] **📝 Puerto normalizado:** Puerto 8088 por defecto consistente en todo el proyecto
+- [x] **✅ Monitoreo de IPs públicas:** Ya incluido en los endpoints
+
 ## 📋 Próximos Pasos / TODO
 
 - [ ] **Configuración Instancia:** Asegurarse de elegir el Shape **`VM.Standard.A1.Flex`** (ARM Ampere) con 4 OCPUs y 24GB RAM.
@@ -209,6 +239,7 @@ Aunque este monitor es fiable, la red de seguridad definitiva es configurar una 
 - [ ] Configurar `.env` con las credenciales reales de OCI.
 - [ ] Mapear el volumen de la clave `.pem` correctamente en `docker-compose.yml`.
 - [ ] **Añadir alertas automáticas:** Integrar notificaciones (Discord/Telegram o Email vía SMTP) si el uso pasa del 80%.
-- [ ] **Vigilancia de IP Pública:** Añadir métrica específica para IPs reservadas (suelen ser máximo 2).
 - [ ] **Gráfico de uso:** Endpoint opcional para generar una pequeña tabla o gráfico en ASCII/HTML.
 - [ ] **Health Check de instancia:** Si el script detecta uso de CPU < 15%, avisar que la instancia corre riesgo de ser borrada por Oracle.
+- [ ] **Tests unitarios:** Añadir tests para las funciones de cálculo de porcentajes
+- [ ] **Métricas Prometheus:** Exponer métricas para integración con Grafana

@@ -5,12 +5,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/rs/zerolog"
 )
 
 // FreeTierLimits define los límites de la capa gratuita de Oracle Cloud
@@ -52,6 +53,9 @@ type FreeTierLimits struct {
 // Limits contiene los valores de la Free Tier de Oracle Cloud
 // Esta es una variable global (a nivel de paquete)
 var Limits = FreeTierLimits{}
+
+// logger es el logger estructurado global
+var logger zerolog.Logger
 
 // init() se ejecuta automáticamente antes de main()
 // Es útil para inicializar variables globales
@@ -211,7 +215,7 @@ func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.WriteHeader(statusCode)
 	// json.NewEncoder es más eficiente que json.Marshal para HTTP
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("Error encoding JSON: %v", err)
+		logger.Error().Err(err).Msg("Error encoding JSON response")
 	}
 }
 
@@ -400,29 +404,140 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// authMiddleware protege los endpoints con una API Key
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// El endpoint /health no requiere autenticación (para health checks)
+		if r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		apiKey := os.Getenv("API_KEY")
+		
+		// Si no hay API_KEY configurada, permitir acceso (desarrollo)
+		if apiKey == "" {
+			logger.Warn().Msg("API_KEY not set - endpoints are unprotected")
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Verificar el header X-API-Key
+		providedKey := r.Header.Get("X-API-Key")
+		if providedKey == "" {
+			logger.Warn().
+				Str("ip", r.RemoteAddr).
+				Str("path", r.URL.Path).
+				Msg("Unauthorized request - missing API key")
+			writeJSON(w, http.StatusUnauthorized, map[string]string{
+				"error": "Missing X-API-Key header",
+			})
+			return
+		}
+
+		if providedKey != apiKey {
+			logger.Warn().
+				Str("ip", r.RemoteAddr).
+				Str("path", r.URL.Path).
+				Msg("Unauthorized request - invalid API key")
+			writeJSON(w, http.StatusUnauthorized, map[string]string{
+				"error": "Invalid API key",
+			})
+			return
+		}
+
+		// API Key válida, continuar
+		next.ServeHTTP(w, r)
+	}
+}
+
+// validateEnvVars valida que las variables de entorno críticas estén configuradas
+func validateEnvVars() error {
+	required := map[string]string{
+		"OCI_TENANCY_ID":       os.Getenv("OCI_TENANCY_ID"),
+		"OCI_USER_ID":          os.Getenv("OCI_USER_ID"),
+		"OCI_FINGERPRINT":      os.Getenv("OCI_FINGERPRINT"),
+		"OCI_PRIVATE_KEY_PATH": os.Getenv("OCI_PRIVATE_KEY_PATH"),
+		"OCI_REGION":           os.Getenv("OCI_REGION"),
+	}
+
+	var missing []string
+	for key, value := range required {
+		if value == "" {
+			missing = append(missing, key)
+		}
+	}
+
+	if len(missing) > 0 {
+		logger.Warn().
+			Strs("missing_vars", missing).
+			Msg("OCI credentials not fully configured - some endpoints will return NOT_CONFIGURED")
+		return fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", "))
+	}
+
+	// Verificar que el archivo de clave privada existe
+	keyPath := os.Getenv("OCI_PRIVATE_KEY_PATH")
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		logger.Error().
+			Str("path", keyPath).
+			Msg("Private key file not found")
+		return fmt.Errorf("private key file not found: %s", keyPath)
+	}
+
+	logger.Info().Msg("OCI credentials validated successfully")
+	return nil
+}
+
 // main es el punto de entrada del programa
 func main() {
+	// Configurar logger estructurado
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+
+	// En desarrollo, usar output legible
+	if os.Getenv("ENV") == "development" {
+		logger = logger.Output(zerolog.ConsoleWriter{Out: os.Stdout})
+	}
+
 	// Cargar variables de entorno desde .env
-	// El _ ignora el error (común si el archivo no existe)
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		logger.Info().Msg("No .env file found, using environment variables")
+	}
 
-	port := getEnv("PORT", "3000")
+	port := getEnv("PORT", "8088")
 
-	// Registrar los handlers
-	// http.HandleFunc asocia una ruta con una función
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/limits", limitsHandler)
-	http.HandleFunc("/usage", usageHandler)
-	http.HandleFunc("/status", statusHandler)
+	// Validar credenciales de OCI (warn si faltan, no bloquear el inicio)
+	validateEnvVars()
+
+	// Validar API Key
+	apiKey := os.Getenv("API_KEY")
+	if apiKey == "" {
+		logger.Warn().Msg("⚠️  API_KEY not set - endpoints will be publicly accessible")
+	} else {
+		logger.Info().Msg("🔒 API authentication enabled")
+	}
+
+	// Registrar los handlers con autenticación
+	http.HandleFunc("/health", authMiddleware(healthHandler))
+	http.HandleFunc("/limits", authMiddleware(limitsHandler))
+	http.HandleFunc("/usage", authMiddleware(usageHandler))
+	http.HandleFunc("/status", authMiddleware(statusHandler))
 
 	// Imprimir información de inicio
-	fmt.Println("🔍 Oracle Free Tier Watcher running on port", port)
+	logger.Info().
+		Str("port", port).
+		Bool("auth_enabled", apiKey != "").
+		Msg("🔍 Oracle Free Tier Watcher started")
+	
 	fmt.Printf("📊 Usage endpoint: http://localhost:%s/usage\n", port)
 	fmt.Printf("💚 Health check: http://localhost:%s/health\n", port)
 	fmt.Printf("📋 Limits info: http://localhost:%s/limits\n", port)
 	fmt.Printf("⚡ Quick status: http://localhost:%s/status\n", port)
 
+	if apiKey != "" {
+		fmt.Println("🔒 Authentication required: Add 'X-API-Key' header to requests")
+	}
+
 	// Iniciar el servidor
-	// log.Fatal termina el programa si hay un error
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	logger.Fatal().Err(http.ListenAndServe(":"+port, nil)).Msg("Server stopped")
 }
