@@ -182,6 +182,43 @@ sudo systemctl enable oracle-watcher
 sudo systemctl start oracle-watcher
 ```
 
+### 🔄 Despliegue Automático
+
+Tienes varias opciones para que tu app se actualice automáticamente:
+
+#### **Opción 1: Watchtower** (Ya incluido en `docker-compose.yml`)
+- ⏰ Actualiza cada hora automáticamente
+- 📦 10MB RAM
+- ✅ Cero configuración
+
+```bash
+docker-compose up -d  # Watchtower ya está incluido
+```
+
+#### **Opción 2: Coolify** (Recomendado - Deploy instantáneo)
+- ⚡ Deploy en 30 segundos tras `git push`
+- 🖥️ UI web bonita
+- 🔐 SSL automático
+- 📊 Logs en tiempo real
+
+👉 **[Ver guía completa de Coolify](DEPLOY_COOLIFY.md)**
+
+#### **Opción 3: GitHub Actions + SSH** (Simple y rápido)
+- ⚡ Deploy inmediato
+- 🎯 Sin dependencias
+- 📝 Control total
+
+👉 **[Ver guía de GitHub Actions](DEPLOY_GITHUB_ACTIONS.md)**
+
+**Comparación:**
+
+| Método | Velocidad | RAM | Complejidad | Recomendado para |
+|--------|-----------|-----|-------------|------------------|
+| Watchtower | 1 hora | 10MB | ⭐ | Comenzar rápido |
+| Coolify | 30 seg | 200MB | ⭐⭐ | Mejor experiencia |
+| GitHub Actions | 30 seg | 0MB | ⭐⭐ | Minimalistas |
+
+
 ## Aprendiendo Go
 
 ### Conceptos clave en este proyecto:

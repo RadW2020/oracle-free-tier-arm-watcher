@@ -2,7 +2,8 @@ version: '3.8'
 
 services:
   oracle-watcher:
-    build: .
+    # Usar la imagen del registry en lugar de build local
+    image: ghcr.io/radw2020/oracle-free-tier-arm-watcher:latest
     container_name: oracle-watcher
     restart: always
     ports:
