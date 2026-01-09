@@ -182,32 +182,30 @@ sudo systemctl enable oracle-watcher
 sudo systemctl start oracle-watcher
 ```
 
-### 🚀 Despliegue Automático con Coolify
+### 🚀 Despliegue en Producción con Coolify
 
-Para despliegue en producción, usa **Coolify** - una plataforma self-hosted que te da:
+Para despliegue automático en tu Oracle Free Tier instance:
 
-- ⚡ **Deploy instantáneo** tras cada `git push` (vía webhook)
-- 🖥️ **UI web intuitiva** para gestionar tus apps
-- 🔐 **SSL automático** con Let's Encrypt
-- 📊 **Logs en tiempo real**
-- 🔄 **Rollback fácil** a versiones anteriores
-- 🎯 **100% gratis y open source**
+👉 **[Ver guía completa en QUICKSTART.md](QUICKSTART.md)**
 
-#### Instalación rápida en Oracle Free Tier:
-
+**Instalación rápida:**
 ```bash
 # En tu instancia Oracle
 curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ```
 
-Espera 2-3 minutos y accede a `http://tu-ip:8000`
+Coolify te da:
+- ⚡ Deploy en 30 segundos tras cada `git push`
+- 🖥️ UI web intuitiva
+- 🔐 SSL automático
+- 📊 Logs en tiempo real
+- 🔄 Rollback fácil
 
-👉 **[Ver guía completa de despliegue con Coolify](DEPLOY_COOLIFY.md)**
+**Flujo automático:**
+```
+git push → GitHub Actions → Webhook → Coolify → Deploy ✅
+```
 
-**Flujo de trabajo:**
-```
-git push → GitHub Actions build → Webhook → Coolify redeploy (30s) ✅
-```
 
 
 
@@ -263,11 +261,12 @@ Aunque este monitor es fiable, la red de seguridad definitiva es configurar una 
 ## 📋 Próximos Pasos / TODO
 
 - [ ] **Configuración Instancia:** Asegurarse de elegir el Shape **`VM.Standard.A1.Flex`** (ARM Ampere) con 4 OCPUs y 24GB RAM.
-- [ ] **Despliegue con Coolify:** Seguir [DEPLOY_COOLIFY.md](DEPLOY_COOLIFY.md) para setup automático
+- [ ] **Despliegue con Coolify:** Seguir [QUICKSTART.md](QUICKSTART.md) para setup completo
 - [ ] Instalar Go (`brew install go`) y compilar localmente para probar.
 - [ ] Configurar `.env` con las credenciales reales de OCI.
 - [ ] **Añadir alertas automáticas:** Integrar notificaciones (Discord/Telegram o Email vía SMTP) si el uso pasa del 80%.
 - [ ] **Gráfico de uso:** Endpoint opcional para generar una pequeña tabla o gráfico en ASCII/HTML.
 - [ ] **Health Check de instancia:** Si el script detecta uso de CPU < 15%, avisar que la instancia corre riesgo de ser borrada por Oracle.
 - [ ] **Métricas Prometheus:** Exponer métricas para integración con Grafana
+
 
