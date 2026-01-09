@@ -1,570 +1,164 @@
-# 🚀 Oracle Free Tier Watcher - Guía Completa
+# 🚀 Quick Start - Oracle Free Tier Watcher
 
-## 📋 Tabla de Contenidos
+## Inicio Rápido (5 minutos)
 
-1. [Inicio Rápido (5 minutos)](#inicio-rápido)
-2. [Despliegue Local (Desarrollo)](#desarrollo-local)
-3. [Despliegue en Producción (Coolify)](#despliegue-en-producción)
-4. [Configuración y Uso](#configuración-y-uso)
-5. [Troubleshooting](#troubleshooting)
+### 1. Clonar y configurar
 
----
-
-## 🎯 Inicio Rápido
-
-### Requisitos
-- ✅ Cuenta en Oracle Cloud (Free Tier)
-- ✅ Instancia Oracle con Ubuntu/Oracle Linux
-- ✅ Go instalado (para desarrollo local)
-
-### Setup en 3 pasos
-
-#### 1️⃣ Clonar y configurar
 ```bash
 git clone https://github.com/RadW2020/oracle-free-tier-arm-watcher.git
 cd oracleFreeTierWatcher
-
-# Copiar archivo de configuración
 cp .env.example .env
 ```
 
-#### 2️⃣ Generar API Key y configurar credenciales
+### 2. Configurar `.env`
+
 ```bash
-# Generar API Key segura
+# Generar API Key
 echo "API_KEY=$(openssl rand -hex 32)" >> .env
 
-# Editar .env con tus credenciales de OCI
-nano .env  # o vim, code, etc.
+# Editar con tus credenciales de OCI
+nano .env
 ```
 
-**Variables requeridas en `.env`:**
-```env
-# Autenticación del watcher
-API_KEY=tu-clave-generada
+**Credenciales necesarias:**
+- `OCI_TENANCY_ID`, `OCI_USER_ID`, `OCI_FINGERPRINT` → OCI Console → Profile
+- `OCI_PRIVATE_KEY_PATH` → Ruta a tu archivo `.pem`
+- `OCI_REGION` → Tu región (ej: `eu-madrid-1`)
+- `OCI_COMPARTMENT_ID` → Normalmente igual al Tenancy ID
 
-# Credenciales de Oracle Cloud
-OCI_TENANCY_ID=ocid1.tenancy.oc1..xxxxx
-OCI_USER_ID=ocid1.user.oc1..xxxxx
-OCI_FINGERPRINT=xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx
-OCI_PRIVATE_KEY_PATH=/path/to/your/oci_api_key.pem
-OCI_REGION=eu-madrid-1
-OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxxxx
-```
+### 3. Test local (opcional)
 
-**¿Dónde obtener las credenciales?**
-- `OCI_TENANCY_ID`: OCI Console → Profile → Tenancy
-- `OCI_USER_ID`: OCI Console → Profile → User Settings
-- `OCI_FINGERPRINT`: OCI Console → Profile → API Keys
-- `OCI_PRIVATE_KEY_PATH`: Ruta al archivo `.pem` descargado
-- `OCI_REGION`: Tu región (ej: `eu-madrid-1`, `us-ashburn-1`)
-- `OCI_COMPARTMENT_ID`: Normalmente igual al Tenancy ID
-
-#### 3️⃣ Desplegar
-
-**Para desarrollo local:**
 ```bash
 go mod download
 go build -o watcher .
 ./watcher
 ```
 
-**Para producción (Oracle Free Tier):**
-Salta a la sección [Despliegue en Producción](#despliegue-en-producción)
-
 ---
 
-## 💻 Desarrollo Local
+## Despliegue en Producción (Coolify)
 
-### Instalación de Go
-
-**macOS:**
-```bash
-brew install go
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt update
-sudo apt install golang-go
-```
-
-**Oracle Linux / RHEL:**
-```bash
-sudo dnf install golang
-```
-
-### Compilar y ejecutar
+### Instalar Coolify en Oracle Free Tier
 
 ```bash
-# Instalar dependencias
-go mod download
-
-# Compilar
-go build -o watcher .
-
-# Ejecutar
-./watcher
-```
-
-### Docker local (opcional)
-
-```bash
-# Build y run
-docker-compose up -d
-
-# Ver logs
-docker-compose logs -f oracle-watcher
-
-# Detener
-docker-compose down
-```
-
-### Probar endpoints
-
-```bash
-# Health check (sin autenticación)
-curl http://localhost:8088/health
-
-# Usage con API Key
-export API_KEY="tu-clave-del-env"
-curl -H "X-API-Key: $API_KEY" http://localhost:8088/usage | jq
-
-# O usar el script de prueba
-chmod +x test-auth.sh
-./test-auth.sh
-```
-
-### Tests unitarios
-
-```bash
-# Ejecutar todos los tests
-go test -v
-
-# Con coverage
-go test -cover
-
-# Benchmark
-go test -bench=.
-```
-
----
-
-## � Despliegue en Producción
-
-### Estrategia: Coolify
-
-**Coolify** es una plataforma self-hosted (como Vercel/Netlify) que ofrece:
-
-- ⚡ **Deploy en 30 segundos** tras cada `git push`
-- 🖥️ **UI web intuitiva** para gestionar tus apps
-- 🔐 **SSL automático** con Let's Encrypt
-- 📊 **Logs en tiempo real**
-- 🔄 **Rollback fácil** a versiones anteriores
-- 🎯 **100% gratis y open source**
-- 🐳 **Soporta múltiples apps** en el mismo servidor
-
-### Flujo de trabajo final
-
-```
-┌──────────────┐
-│  Local Dev   │
-│  (tu Mac)    │
-└──────┬───────┘
-       │
-       │ git push
-       ▼
-┌──────────────┐
-│ GitHub       │
-│ Actions      │ ← Compila imagen ARM64
-└──────┬───────┘
-       │
-       │ webhook (30s)
-       ▼
-┌──────────────┐
-│  Coolify     │
-│ (Oracle ARM) │ ← Deploy automático
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│  Running!    │
-│  https://... │
-└──────────────┘
-```
-
----
-
-## 📦 Instalación de Coolify
-
-### 1. Conecta a tu Oracle instance
-
-```bash
+# SSH a tu instancia
 ssh ubuntu@tu-ip-oracle
-```
 
-### 2. Instala Coolify (un solo comando)
-
-```bash
+# Instalar Coolify (2-3 min)
 curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ```
 
-**Tiempo de instalación:** 2-3 minutos
+### Abrir firewall en OCI
 
-**Al terminar verás:**
-```
-✅ Coolify installed successfully!
-🌐 Access it at: http://tu-ip:8000
-```
+1. **OCI Console → Networking → VCN → Security Lists**
+2. **Add Ingress Rule:**
+   - Puerto: `8000` (Coolify UI)
+   - Source: `0.0.0.0/0`
 
-### 3. Abre el firewall en Oracle Cloud
+### Configurar en Coolify
 
-**Importante:** Debes abrir el puerto en OCI Console:
-
-1. Ve a **OCI Console → Networking → Virtual Cloud Networks**
-2. Selecciona tu VCN
-3. **Security Lists → Default Security List**
-4. **Add Ingress Rule:**
-   - Source CIDR: `0.0.0.0/0`
-   - IP Protocol: `TCP`
-   - Destination Port Range: `8000` (Coolify UI)
-   - (Opcional) Puerto `80` y `443` si usas dominio
-
-5. **En tu servidor también:**
-```bash
-# Ubuntu/Debian
-sudo ufw allow 8000/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-
-# Oracle Linux
-sudo firewall-cmd --permanent --add-port=8000/tcp
-sudo firewall-cmd --permanent --add-port=80/tcp
-sudo firewall-cmd --permanent --add-port=443/tcp
-sudo firewall-cmd --reload
-```
-
----
-
-## ⚙️ Configuración en Coolify
-
-### 1. Acceso inicial
-
-1. Abre `http://tu-ip-oracle:8000` en tu navegador
-2. Crea tu cuenta de administrador
-3. Verifica tu email (o sáltalo si es para tu uso personal)
-
-### 2. Conectar GitHub
-
-1. **Settings → GitHub App**
-2. Click en **Create GitHub App**
-3. Te redirigirá a GitHub para autorizar
-4. Selecciona los repositorios (o todos)
-5. Instala la app de GitHub
-
-### 3. Crear proyecto y desplegar
-
-#### Opción A: Deploy desde GitHub (Recomendado)
-
-1. **Projects → New Project**
-   - Name: `Oracle Watcher`
-
-2. **Resources → New Resource → Application**
-   - Source: **GitHub**
-   - Repository: `RadW2020/oracle-free-tier-arm-watcher`
+1. Abre `http://tu-ip:8000`
+2. Crea cuenta admin
+3. **Settings → GitHub App** → Conecta tu cuenta
+4. **Projects → New → Application**
+   - Source: GitHub
+   - Repo: `RadW2020/oracle-free-tier-arm-watcher`
    - Branch: `main`
-
-3. **Build Configuration:**
-   - Build Pack: **Dockerfile**
-   - Dockerfile Location: `/Dockerfile`
+5. **Build:**
+   - Build Pack: `Dockerfile`
    - Port: `8088`
-
-4. **Environment Variables:**
-   
-   Click en **Add Variable** para cada una:
+6. **Environment Variables:**
    ```
    PORT=8088
-   API_KEY=tu-clave-secreta-generada
-   OCI_TENANCY_ID=ocid1.tenancy.oc1..xxxxx
-   OCI_USER_ID=ocid1.user.oc1..xxxxx
-   OCI_FINGERPRINT=xx:xx:xx:xx:xx...
+   API_KEY=tu-clave
+   OCI_TENANCY_ID=...
+   OCI_USER_ID=...
+   OCI_FINGERPRINT=...
    OCI_PRIVATE_KEY_PATH=/app/key.pem
-   OCI_REGION=eu-madrid-1
-   OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxxxx
+   OCI_REGION=...
+   OCI_COMPARTMENT_ID=...
    ```
-
-5. **Ficheros (para key.pem):**
-   - Click en **Files** → **Add File**
+7. **Files → Add File:**
    - Path: `/app/key.pem`
-   - Content: [Pega el contenido completo de tu archivo `.pem`]
+   - Content: [pega tu archivo .pem]
    - Permissions: `600`
-
-6. **Deploy Settings:**
-   - ✅ Enable **Auto Deploy**
-   - Esto creará un webhook en GitHub automáticamente
-
-7. **Deploy!**
-   - Click en **Deploy**
-   - Verás los logs en tiempo real
-
-#### Opción B: Deploy desde Docker Registry
-
-Si prefieres usar la imagen pre-compilada:
-
-1. **Resources → New Resource → Docker Image**
-2. **Image:** `ghcr.io/radw2020/oracle-free-tier-arm-watcher:latest`
-3. **Port:** `8088`
-4. Configura las mismas variables de entorno
-5. Deploy
+8. **Enable Auto Deploy** ✅
+9. **Deploy!**
 
 ---
 
-## � Configurar SSL (Opcional pero recomendado)
+## Uso
 
-Si tienes un dominio:
-
-### 1. Configurar DNS
-
-Apunta tu dominio a la IP de Oracle:
-
-```
-A     watcher.tudominio.com  →  tu-ip-oracle
-```
-
-### 2. En Coolify
-
-1. Ve a tu aplicación en Coolify
-2. **Domains → Add Domain**
-3. Escribe: `watcher.tudominio.com`
-4. ✅ Enable **SSL (Let's Encrypt)**
-5. Coolify generará el certificado automáticamente
-
-**¡Listo!** Tu app estará en `https://watcher.tudominio.com` 🎉
-
----
-
-## 🎮 Configuración y Uso
-
-### Endpoints Disponibles
-
-| Endpoint | Descripción | Auth | Ejemplo |
-|----------|-------------|------|---------|
-| `GET /health` | Health check | ❌ | `curl https://watcher.tudominio.com/health` |
-| `GET /limits` | Límites Free Tier | ✅ | `curl -H "X-API-Key: $KEY" .../limits` |
-| `GET /usage` | Uso detallado | ✅ | `curl -H "X-API-Key: $KEY" .../usage` |
-| `GET /status` | Estado rápido | ✅ | `curl -H "X-API-Key: $KEY" .../status` |
-
-### Ejemplo de uso con autenticación
+### Endpoints
 
 ```bash
-# Guardar API Key
-export API_KEY="tu-clave-del-env"
+# Health (sin auth)
+curl https://tu-app.com/health
 
-# Ver uso detallado
-curl -H "X-API-Key: $API_KEY" \
-  https://watcher.tudominio.com/usage | jq
-
-# Ver solo el estado
-curl -H "X-API-Key: $API_KEY" \
-  https://watcher.tudominio.com/status | jq '.status'
+# Usage (con auth)
+curl -H "X-API-Key: tu-clave" https://tu-app.com/usage | jq
 ```
 
-### Respuesta de ejemplo
+### Estados
 
-```json
-{
-  "status": "OK",
-  "maxUsagePercentage": 50,
-  "warnings": [],
-  "timestamp": "2026-01-10T00:00:00Z",
-  "configured": true,
-  "usage": {
-    "compute": {
-      "arm": {
-        "ocpus": { "used": 2, "limit": 4, "percentage": 50 },
-        "memoryGB": { "used": 12, "limit": 24, "percentage": 50 },
-        "instances": 1
-      }
-    },
-    "blockStorage": {
-      "total": { "used": 100, "limit": 200, "percentage": 50 }
-    }
-  }
-}
-```
-
-### Estados posibles
-
-| Status | Porcentaje | Descripción |
-|--------|-----------|-------------|
-| `OK` | < 60% | Todo bien |
-| `ATTENTION` | 60-80% | Precaución |
-| `WARNING` | 80-90% | Revisar |
-| `CRITICAL` | > 90% | Límite cerca |
+| Status | % | Acción |
+|--------|---|--------|
+| OK | <60% | ✅ Todo bien |
+| ATTENTION | 60-80% | ⚠️ Revisar |
+| WARNING | 80-90% | 🟡 Precaución |
+| CRITICAL | >90% | 🔴 Límite cerca |
 
 ---
 
-## 🔧 Troubleshooting
+## SSL (Opcional)
 
-### "Unauthorized" al acceder a endpoints
+Si tienes dominio:
 
-**Problema:** Respuesta 401 Unauthorized
+1. DNS: `A watcher.tudominio.com → tu-ip`
+2. Coolify → Domains → Add Domain
+3. Enable SSL ✅
 
-**Solución:** Asegúrate de pasar el header `X-API-Key`
+---
+
+## Troubleshooting
+
+### Error: "Unauthorized"
+→ Asegúrate de pasar `X-API-Key` en el header
+
+### Error: "OCI not configured"
+→ Verifica variables de entorno en Coolify
+
+### Error: "Private key not found"
+→ Verifica que `/app/key.pem` existe en Files
+
+### Coolify no accesible
 ```bash
-curl -H "X-API-Key: tu-clave" https://watcher.tudominio.com/usage
-```
+# Verificar firewall
+sudo ufw allow 8000/tcp
 
----
-
-### "OCI credentials not configured"
-
-**Problema:** La app responde con estado `NOT_CONFIGURED`
-
-**Solución:** Verifica las variables de entorno en Coolify:
-1. Ve a tu app → **Environment Variables**
-2. Verifica que todas las variables `OCI_*` estén configuradas
-3. Especialmente verifica `OCI_PRIVATE_KEY_PATH=/app/key.pem`
-
----
-
-### "Private key file not found"
-
-**Problema:** Error al iniciar: "Private key file not found"
-
-**Solución:** 
-1. En Coolify → **Files**
-2. Verifica que `/app/key.pem` existe
-3. Contenido debe ser tu clave privada completa (incluye headers):
-   ```
-   -----BEGIN PRIVATE KEY-----
-   ...
-   -----END PRIVATE KEY-----
-   ```
-4. Permissions debe ser `600`
-
----
-
-### Coolify no arranca
-
-**Solución:**
-```bash
 # Verificar Docker
 sudo systemctl status docker
-sudo systemctl start docker
-
-# Reiniciar Coolify
-docker restart coolify
-
-# Ver logs
-docker logs -f coolify
+docker ps | grep coolify
 ```
 
 ---
 
-### Deploy falla en GitHub Actions
+## ✅ Checklist
 
-**Solución:**
-1. Ve a GitHub → Actions → Ver el error
-2. Usualmente es problema de permisos
-3. En GitHub → Settings → Actions → Workflow permissions
-4. Selecciona "Read and write permissions"
-
----
-
-### No puedo acceder a Coolify UI (puerto 8000)
-
-**Solución:**
-1. Verifica firewall en Oracle Cloud (Security Lists)
-2. Verifica firewall local:
-   ```bash
-   sudo ufw status
-   sudo ufw allow 8000/tcp
-   ```
-3. Verifica que Coolify esté corriendo:
-   ```bash
-   docker ps | grep coolify
-   ```
+- [ ] Instancia Oracle ARM (4 OCPUs, 24GB)
+- [ ] Coolify instalado
+- [ ] Firewall abierto (puerto 8000)
+- [ ] GitHub conectado
+- [ ] Variables de entorno configuradas
+- [ ] Archivo `key.pem` añadido
+- [ ] Auto-deploy activado
+- [ ] `/health` responde OK
 
 ---
 
-## ✅ Checklist de Producción
-
-- [ ] **Oracle Free Tier configurado**
-  - [ ] Instancia ARM (VM.Standard.A1.Flex)
-  - [ ] 4 OCPUs, 24GB RAM
-  - [ ] Región correcta (Home Region)
-  
-- [ ] **Credenciales configuradas**
-  - [ ] `.env` con todas las variables OCI
-  - [ ] `API_KEY` generada con `openssl rand -hex 32`
-  - [ ] Archivo `.pem` con permisos 600
-  
-- [ ] **Coolify instalado**
-  - [ ] Instalación completada
-  - [ ] Acceso a UI funcionando
-  - [ ] GitHub conectado
-  
-- [ ] **App desplegada**
-  - [ ] Proyecto creado en Coolify
-  - [ ] Variables de entorno configuradas
-  - [ ] Archivo `key.pem` montado correctamente
-  - [ ] Webhook de GitHub configurado
-  - [ ] Deploy exitoso
-  
-- [ ] **Verificación**
-  - [ ] `/health` responde OK
-  - [ ] Logs muestran "OCI credentials validated successfully"
-  - [ ] `/usage` devuelve datos correctos
-  - [ ] Auto-deploy funciona (prueba con un push)
-  
-- [ ] **Seguridad**
-  - [ ] API_KEY configurada y funcionando
-  - [ ] Firewall configurado en OCI
-  - [ ] (Opcional) SSL configurado con dominio
-  - [ ] Alertas de presupuesto en OCI Console
-
----
-
-## 📊 Mejoras Incluidas
-
-Este proyecto incluye:
-
-- ✅ **Autenticación con API Key** - Protege tus endpoints
-- ✅ **Logging estructurado** - Logs en JSON con zerolog
-- ✅ **Llamadas paralelas a OCI** - 3-5x más rápido con goroutines
-- ✅ **Validación de credenciales** - Verifica al iniciar
-- ✅ **Tests unitarios** - Cobertura básica
-- ✅ **GitHub Actions** - Build automático ARM64
-- ✅ **Deploy automático** - Con Coolify
-- ✅ **Puerto normalizado** - 8088 en todo el proyecto
-
----
-
-## 🆘 Recursos Adicionales
-
-- **Documentación:**
-  - [README.md](README.md) - Información general del proyecto
-  - [SECURITY.md](SECURITY.md) - Guía de seguridad
-  - [CHANGELOG.md](CHANGELOG.md) - Historial de cambios
-
-- **Enlaces externos:**
-  - [Coolify Documentation](https://coolify.io/docs)
-  - [Oracle Free Tier](https://www.oracle.com/cloud/free/)
-  - [OCI Go SDK](https://github.com/oracle/oci-go-sdk)
-
-- **Ayuda:**
-  - Issues: https://github.com/RadW2020/oracle-free-tier-arm-watcher/issues
-  - Coolify Discord: https://discord.gg/coolify
-
----
-
-## 🎉 ¡Listo!
-
-Tu Oracle Free Tier Watcher está configurado y desplegado.
-
-**Workflow final:**
+**Flujo final:**
 ```
-git push → GitHub Actions (5 min) → Webhook → Coolify (30s) → ✅ Live!
+git push → GitHub Actions → Webhook → Coolify → Live (30s) ✅
 ```
 
-**Disfruta monitoreando tu Oracle Free Tier sin sorpresas en la factura!** 🚀
+**Listo! Tu watcher está desplegado y se actualizará automáticamente.** 🎉
