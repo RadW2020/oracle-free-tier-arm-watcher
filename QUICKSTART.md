@@ -30,13 +30,7 @@ nano .env  # o vim, code, etc.
 
 ### 3️⃣ Ejecutar
 
-**Opción A: Con Docker (recomendado)**
-```bash
-docker-compose up -d
-docker-compose logs -f oracle-watcher
-```
-
-**Opción B: Con Go localmente**
+**Desarrollo local:**
 ```bash
 # Instalar Go si no lo tienes
 brew install go  # macOS
@@ -47,6 +41,17 @@ go mod download
 go build -o watcher .
 ./watcher
 ```
+
+**Producción en Oracle Free Tier:**
+```bash
+# Instalar Coolify (una sola vez)
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+
+# Luego configura el deploy desde la UI
+# http://tu-ip-oracle:8000
+```
+
+👉 **[Ver guía completa de Coolify](DEPLOY_COOLIFY.md)**
 
 ### 4️⃣ Probar
 ```bash
@@ -91,21 +96,24 @@ curl -H "X-API-Key: $API_KEY" http://localhost:8088/status
 
 ---
 
-## 🐳 Docker Compose
+## 🚀 Despliegue en Producción
+
+Para despliegue en tu Oracle Free Tier, usa **Coolify**:
 
 ```bash
-# Iniciar
-docker-compose up -d
-
-# Ver logs
-docker-compose logs -f
-
-# Reiniciar
-docker-compose restart
-
-# Detener
-docker-compose down
+# En tu instancia Oracle
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ```
+
+Accede a `http://tu-ip:8000` y configura tu app.
+
+👉 **[Guía completa de Coolify](DEPLOY_COOLIFY.md)**
+
+**Beneficios:**
+- ⚡ Deploy en 30 segundos
+- 🖥️ UI web intuitiva
+- 🔐 SSL automático
+- 📊 Logs en tiempo real
 
 ---
 
@@ -158,18 +166,6 @@ ENV=development ./watcher
 
 ---
 
-## 📊 Monitoreo con Watchtower
-
-El `docker-compose.yml` incluye Watchtower que actualiza automáticamente:
-- Cada hora verifica si hay nuevas imágenes
-- Si encuentra una nueva, actualiza el contenedor
-- Limpia imágenes antiguas automáticamente
-
-**Deshabilitar:**
-Comenta las líneas de `watchtower` en `docker-compose.yml`
-
----
-
 ## 📖 Documentación Completa
 
 - [README.md](README.md) - Documentación principal
@@ -202,11 +198,13 @@ docker-compose logs -f
 - [ ] `.env` configurado con credenciales reales
 - [ ] `API_KEY` generada con `openssl rand -hex 32`
 - [ ] Archivo `.pem` con permisos 600
-- [ ] Docker compose corriendo
+- [ ] **Coolify instalado** en Oracle instance
+- [ ] **App desplegada** en Coolify
+- [ ] **Webhook configurado** para auto-deploy
 - [ ] Endpoints responden correctamente
 - [ ] Logs muestran "OCI credentials validated successfully"
 - [ ] Configurar alertas de presupuesto en OCI Console
-- [ ] Configurar reverse proxy con HTTPS (producción)
+- [ ] **(Opcional)** Configurar dominio y SSL en Coolify
 
 ---
 

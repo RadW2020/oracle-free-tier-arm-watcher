@@ -2,8 +2,7 @@ version: '3.8'
 
 services:
   oracle-watcher:
-    # Usar la imagen del registry en lugar de build local
-    image: ghcr.io/radw2020/oracle-free-tier-arm-watcher:latest
+    build: .
     container_name: oracle-watcher
     restart: always
     ports:
@@ -14,11 +13,3 @@ services:
       # Montamos la clave privada para que el contenedor pueda leerla
       - ${OCI_PRIVATE_KEY_PATH}:/app/key.pem:ro
 
-  # Watchtower: Actualiza automáticamente tus contenedores cuando subes cambios
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
-    restart: always
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 3600 --cleanup

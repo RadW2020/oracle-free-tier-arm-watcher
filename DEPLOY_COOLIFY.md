@@ -74,35 +74,15 @@ Espera 2-3 minutos. Al terminar te dará una URL:
 
 ---
 
-### Opción B: Desde Docker Registry (más simple)
+## ✨ Ventajas de Coolify
 
-1. **En Coolify → Resources → New Resource → Docker Image**
-
-2. **Configuración:**
-   - Image: `ghcr.io/radw2020/oracle-free-tier-arm-watcher:latest`
-   - Port: `8088`
-   - Pull Policy: `Always` ← Importante
-
-3. **Variables de entorno:** [igual que arriba]
-
-4. **Deploy**
-
-Coolify verificará cada pocos minutos si hay una nueva imagen.
-
----
-
-## Ventajas de Coolify vs Watchtower
-
-| Característica | Watchtower | Coolify |
-|----------------|------------|---------|
-| **Deploy automático** | ✅ Cada 1h | ⚡ Instantáneo (webhook) |
-| **UI Web** | ❌ | ✅ |
-| **Logs en tiempo real** | ❌ | ✅ |
-| **SSL automático** | ❌ | ✅ |
-| **Rollback fácil** | ❌ | ✅ |
-| **Variables de entorno** | .env manual | ✅ UI |
-| **Multi-app** | ❌ | ✅ |
-| **Consumo RAM** | ~10MB | ~200MB |
+- ⚡ **Deploy instantáneo** - 30 segundos después de `git push`
+- 🖥️ **UI web intuitiva** - Gestiona todo visualmente
+- 🔐 **SSL automático** - Let's Encrypt integrado
+- 📊 **Logs en tiempo real** - Debug fácil
+- 🔄 **Rollback sencillo** - Vuelve a cualquier versión
+- 🎯 **Webhooks** - Integración con GitHub
+- 🐳 **Multi-stack** - Soporta Docker, Dockerfile, y más
 
 ---
 
@@ -162,46 +142,11 @@ sudo systemctl start docker
 
 ---
 
-## Comandos Útiles
+## 🎉 ¡Listo!
 
-```bash
-# Ver logs de Coolify
-docker logs -f coolify
-
-# Reiniciar Coolify
-docker restart coolify
-
-# Ver servicios corriendo
-docker ps
-
-# Ver uso de recursos
-docker stats
-```
-
----
-
-## Resumen
-
-**Setup inicial:**
-```bash
-# 1. Instalar Coolify
-curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
-
-# 2. Configurar en UI (http://tu-ip:8000)
-# 3. Conectar GitHub
-# 4. Deploy automático activado
-```
+Ahora cada vez que hagas `git push`, tu app se desplegará automáticamente en Oracle Free Tier en ~30 segundos.
 
 **Workflow:**
 ```
-git push → GitHub Actions build → Webhook → Coolify redeploy (30s)
+Local → git push → GitHub Actions → Webhook → Coolify → Deploy ✅
 ```
-
-**Sin Coolify (Watchtower):**
-```
-git push → GitHub Actions build → Watchtower check cada 1h → Update
-```
-
----
-
-🎯 **Recomendación:** Usa Coolify si quieres despliegues instantáneos y una UI bonita. Usa Watchtower si prefieres algo simple y sin UI.

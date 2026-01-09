@@ -182,41 +182,33 @@ sudo systemctl enable oracle-watcher
 sudo systemctl start oracle-watcher
 ```
 
-### 🔄 Despliegue Automático
+### 🚀 Despliegue Automático con Coolify
 
-Tienes varias opciones para que tu app se actualice automáticamente:
+Para despliegue en producción, usa **Coolify** - una plataforma self-hosted que te da:
 
-#### **Opción 1: Watchtower** (Ya incluido en `docker-compose.yml`)
-- ⏰ Actualiza cada hora automáticamente
-- 📦 10MB RAM
-- ✅ Cero configuración
+- ⚡ **Deploy instantáneo** tras cada `git push` (vía webhook)
+- 🖥️ **UI web intuitiva** para gestionar tus apps
+- 🔐 **SSL automático** con Let's Encrypt
+- 📊 **Logs en tiempo real**
+- 🔄 **Rollback fácil** a versiones anteriores
+- 🎯 **100% gratis y open source**
+
+#### Instalación rápida en Oracle Free Tier:
 
 ```bash
-docker-compose up -d  # Watchtower ya está incluido
+# En tu instancia Oracle
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ```
 
-#### **Opción 2: Coolify** (Recomendado - Deploy instantáneo)
-- ⚡ Deploy en 30 segundos tras `git push`
-- 🖥️ UI web bonita
-- 🔐 SSL automático
-- 📊 Logs en tiempo real
+Espera 2-3 minutos y accede a `http://tu-ip:8000`
 
-👉 **[Ver guía completa de Coolify](DEPLOY_COOLIFY.md)**
+👉 **[Ver guía completa de despliegue con Coolify](DEPLOY_COOLIFY.md)**
 
-#### **Opción 3: GitHub Actions + SSH** (Simple y rápido)
-- ⚡ Deploy inmediato
-- 🎯 Sin dependencias
-- 📝 Control total
+**Flujo de trabajo:**
+```
+git push → GitHub Actions build → Webhook → Coolify redeploy (30s) ✅
+```
 
-👉 **[Ver guía de GitHub Actions](DEPLOY_GITHUB_ACTIONS.md)**
-
-**Comparación:**
-
-| Método | Velocidad | RAM | Complejidad | Recomendado para |
-|--------|-----------|-----|-------------|------------------|
-| Watchtower | 1 hora | 10MB | ⭐ | Comenzar rápido |
-| Coolify | 30 seg | 200MB | ⭐⭐ | Mejor experiencia |
-| GitHub Actions | 30 seg | 0MB | ⭐⭐ | Minimalistas |
 
 
 ## Aprendiendo Go
@@ -271,12 +263,11 @@ Aunque este monitor es fiable, la red de seguridad definitiva es configurar una 
 ## 📋 Próximos Pasos / TODO
 
 - [ ] **Configuración Instancia:** Asegurarse de elegir el Shape **`VM.Standard.A1.Flex`** (ARM Ampere) con 4 OCPUs y 24GB RAM.
-- [ ] **Despliegue:** Configurar en **Coolify** apuntando al repositorio de GitHub para actualizaciones automáticas.
+- [ ] **Despliegue con Coolify:** Seguir [DEPLOY_COOLIFY.md](DEPLOY_COOLIFY.md) para setup automático
 - [ ] Instalar Go (`brew install go`) y compilar localmente para probar.
 - [ ] Configurar `.env` con las credenciales reales de OCI.
-- [ ] Mapear el volumen de la clave `.pem` correctamente en `docker-compose.yml`.
 - [ ] **Añadir alertas automáticas:** Integrar notificaciones (Discord/Telegram o Email vía SMTP) si el uso pasa del 80%.
 - [ ] **Gráfico de uso:** Endpoint opcional para generar una pequeña tabla o gráfico en ASCII/HTML.
 - [ ] **Health Check de instancia:** Si el script detecta uso de CPU < 15%, avisar que la instancia corre riesgo de ser borrada por Oracle.
-- [ ] **Tests unitarios:** Añadir tests para las funciones de cálculo de porcentajes
 - [ ] **Métricas Prometheus:** Exponer métricas para integración con Grafana
+
