@@ -45,7 +45,7 @@ go build -o watcher .
 ssh ubuntu@tu-ip-oracle
 
 # Instalar Coolify (2-3 min)
-curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo bash
 ```
 
 ### Abrir firewall en OCI
