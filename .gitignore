@@ -1,0 +1,12 @@
+# Binary
+oracle-free-tier-watcher
+watcher
+
+# Environment
+.env
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
