@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 )
 
@@ -139,6 +140,22 @@ type LoadBalancerInfo struct {
 	State string `json:"state"`
 }
 
+// DatabaseUsage contiene el uso de bases de datos
+type DatabaseUsage struct {
+	AutonomousDBs UsageMetric `json:"autonomousDBs"`
+	StorageUsage  UsageMetric `json:"storageUsage"`
+	Count         int         `json:"count"`
+	Error         string      `json:"error,omitempty"`
+}
+
+// BandwidthUsage contiene el uso de transferencia
+type BandwidthUsage struct {
+	EgressGB   float64 `json:"egressGB"`
+	LimitTB    int     `json:"limitTB"`
+	Percentage int     `json:"percentage"`
+	Error      string  `json:"error,omitempty"`
+}
+
 // AllUsage contiene todo el uso
 type AllUsage struct {
 	Compute       ComputeUsage       `json:"compute"`
@@ -146,6 +163,8 @@ type AllUsage struct {
 	PublicIPs     UsageMetric        `json:"publicIPs"`
 	ObjectStorage ObjectStorageUsage `json:"objectStorage"`
 	LoadBalancer  LoadBalancerUsage  `json:"loadBalancer"`
+	Database      DatabaseUsage      `json:"database"`
+	Bandwidth     BandwidthUsage     `json:"bandwidth"`
 }
 
 // UsageResponse es la respuesta del endpoint /usage
@@ -313,6 +332,24 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 			warnings = append(warnings, fmt.Sprintf("Object Storage at %d%%", usage.ObjectStorage.Total.Percentage))
 		}
 	}
+	if usage.Compute.AMD.Instances.Percentage > 0 {
+		percentages = append(percentages, usage.Compute.AMD.Instances.Percentage)
+		if usage.Compute.AMD.Instances.Percentage >= 80 {
+			warnings = append(warnings, fmt.Sprintf("AMD Instances at %d%%", usage.Compute.AMD.Instances.Percentage))
+		}
+	}
+	if usage.Database.AutonomousDBs.Percentage > 0 {
+		percentages = append(percentages, usage.Database.AutonomousDBs.Percentage)
+		if usage.Database.AutonomousDBs.Percentage >= 80 {
+			warnings = append(warnings, fmt.Sprintf("Autonomous DBs at %d%%", usage.Database.AutonomousDBs.Percentage))
+		}
+	}
+	if usage.Database.StorageUsage.Percentage > 0 {
+		percentages = append(percentages, usage.Database.StorageUsage.Percentage)
+		if usage.Database.StorageUsage.Percentage >= 80 {
+			warnings = append(warnings, fmt.Sprintf("DB Storage at %d%%", usage.Database.StorageUsage.Percentage))
+		}
+	}
 
 	maxPercentage := 0
 	for _, p := range percentages {
@@ -371,9 +408,12 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	percentages := []int{
 		usage.Compute.ARM.OCPUs.Percentage,
 		usage.Compute.ARM.MemoryGB.Percentage,
+		usage.Compute.AMD.Instances.Percentage,
 		usage.BlockStorage.Total.Percentage,
 		usage.ObjectStorage.Total.Percentage,
 		usage.PublicIPs.Percentage,
+		usage.Database.AutonomousDBs.Percentage,
+		usage.Database.StorageUsage.Percentage,
 	}
 
 	maxPercentage := 0
@@ -522,6 +562,18 @@ func main() {
 	http.HandleFunc("/limits", authMiddleware(limitsHandler))
 	http.HandleFunc("/usage", authMiddleware(usageHandler))
 	http.HandleFunc("/status", authMiddleware(statusHandler))
+	http.Handle("/metrics", promhttp.Handler())
+
+	// Configurar intervalo de métricas (default 15 min)
+	intervalStr := getEnv("METRICS_INTERVAL", "15m")
+	interval, err := time.ParseDuration(intervalStr)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Invalid METRICS_INTERVAL, using default 15m")
+		interval = 15 * time.Minute
+	}
+
+	// Iniciar el worker de métricas en segundo plano
+	go BackgroundMetricsWorker(interval)
 
 	// Imprimir información de inicio
 	logger.Info().

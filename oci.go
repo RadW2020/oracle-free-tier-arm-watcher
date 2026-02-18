@@ -9,6 +9,7 @@ import (
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
+	"github.com/oracle/oci-go-sdk/v65/database"
 	"github.com/oracle/oci-go-sdk/v65/loadbalancer"
 	"github.com/oracle/oci-go-sdk/v65/objectstorage"
 )
@@ -70,10 +71,12 @@ func getOCIUsage() (*AllUsage, error) {
 		objectStorageUsage ObjectStorageUsage
 		loadBalancerUsage  LoadBalancerUsage
 		publicIPUsage      UsageMetric
+		databaseUsage      DatabaseUsage
+		bandwidthUsage     BandwidthUsage
 	)
 
-	// Canal para sincronización (esperamos 5 goroutines)
-	done := make(chan bool, 5)
+	// Canal para sincronización (esperamos 7 goroutines)
+	done := make(chan bool, 7)
 
 	// Lanzar todas las consultas en paralelo
 	go func() {
@@ -101,8 +104,18 @@ func getOCIUsage() (*AllUsage, error) {
 		done <- true
 	}()
 
+	go func() {
+		databaseUsage = getDatabaseUsage(provider, compartmentID)
+		done <- true
+	}()
+
+	go func() {
+		bandwidthUsage = getBandwidthUsage(provider, compartmentID)
+		done <- true
+	}()
+
 	// Esperar a que todas las goroutines terminen
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 7; i++ {
 		<-done
 	}
 
@@ -112,6 +125,8 @@ func getOCIUsage() (*AllUsage, error) {
 		PublicIPs:     publicIPUsage,
 		ObjectStorage: objectStorageUsage,
 		LoadBalancer:  loadBalancerUsage,
+		Database:      databaseUsage,
+		Bandwidth:     bandwidthUsage,
 	}, nil
 }
 
@@ -379,3 +394,65 @@ func getLoadBalancerUsage(provider common.ConfigurationProvider, compartmentID s
 
 	return usage
 }
+
+// getDatabaseUsage obtiene el uso de Autonomous Databases
+func getDatabaseUsage(provider common.ConfigurationProvider, compartmentID string) DatabaseUsage {
+	usage := DatabaseUsage{}
+
+	client, err := database.NewDatabaseClientWithConfigurationProvider(provider)
+	if err != nil {
+		usage.Error = err.Error()
+		return usage
+	}
+
+	request := database.ListAutonomousDatabasesRequest{
+		CompartmentId: common.String(compartmentID),
+	}
+
+	response, err := client.ListAutonomousDatabases(context.Background(), request)
+	if err != nil {
+		usage.Error = err.Error()
+		return usage
+	}
+
+	count := 0
+	var storageTB float64
+	for _, db := range response.Items {
+		// Solo contar si no está eliminado
+		if db.LifecycleState != database.AutonomousDatabaseSummaryLifecycleStateTerminated {
+			count++
+			if db.DataStorageSizeInTBs != nil {
+				storageTB += float64(*db.DataStorageSizeInTBs)
+			}
+		}
+	}
+
+	storageGB := storageTB * 1024
+	usage.Count = count
+	usage.AutonomousDBs = UsageMetric{
+		Used:       float64(count),
+		Limit:      float64(Limits.Database.AutonomousDBs),
+		Percentage: int((float64(count) / float64(Limits.Database.AutonomousDBs)) * 100),
+	}
+	usage.StorageUsage = UsageMetric{
+		Used:       storageGB,
+		Limit:      float64(Limits.Database.TotalStorageGB),
+		Percentage: int((storageGB / float64(Limits.Database.TotalStorageGB)) * 100),
+	}
+
+	return usage
+}
+
+// getBandwidthUsage obtiene el uso de transferencia (egress) aproximado
+func getBandwidthUsage(provider common.ConfigurationProvider, compartmentID string) BandwidthUsage {
+	usage := BandwidthUsage{LimitTB: Limits.Bandwidth.EgressTBPerMonth}
+
+	// Por ahora devolvemos 0 hasta que implementemos la query de usageapi
+	// ya que requiere permisos específicos de billing que el usuario podría no tener.
+	// Pero dejamos la estructura lista.
+	usage.EgressGB = 0
+	usage.Percentage = 0
+
+	return usage
+}
+

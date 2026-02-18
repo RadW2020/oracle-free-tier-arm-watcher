@@ -5,7 +5,9 @@ Este repositorio contiene las herramientas definitivas para gestionar y aprovech
 ## 📦 Componentes del Suite
 
 ### 1. 🔍 Oracle Free Tier Watcher (Go)
+
 Servicio ligero para monitorear el uso de tus recursos y evitar cargos inesperados.
+
 - **Binario único** - Sin dependencias en el servidor.
 - **Eficiente** - Uso mínimo de RAM/CPU.
 - **Alertas** - Monitoreo de OCPUs, RAM, Disco y Transferencia.
@@ -13,7 +15,9 @@ Servicio ligero para monitorear el uso de tus recursos y evitar cargos inesperad
 👉 **[Ir a documentación del Watcher](#watcher-go-details)**
 
 ### 2. 📨 Postiz Social Media Butler (Full Stack)
+
 Instancia completa de Postiz desplegada con arquitectura distribuida (Temporal + ES + Postgres).
+
 - **Auto-gestionado** - Control total de tus redes sociales.
 - **Alta disponibilidad** - Configurado sobre Temporal.io.
 - **Seguro** - Configuración endurecida para OCI.
@@ -23,33 +27,38 @@ Instancia completa de Postiz desplegada con arquitectura distribuida (Temporal +
 ---
 
 <a name="watcher-go-details"></a>
+
 ## 🔍 Watcher Go - Detalles
 
 ## Endpoints
 
-| Endpoint | Descripción | Auth |
-|----------|-------------|------|
-| `GET /usage` | Uso detallado de todos los recursos con porcentajes | ✅ |
-| `GET /status` | Estado rápido (OK/ATTENTION/WARNING/CRITICAL) | ✅ |
-| `GET /health` | Health check simple | ❌ |
-| `GET /limits` | Límites de la Free Tier | ✅ |
+| Endpoint       | Descripción                                         | Auth |
+| -------------- | --------------------------------------------------- | ---- |
+| `GET /usage`   | Uso detallado de todos los recursos con porcentajes | ✅   |
+| `GET /status`  | Estado rápido (OK/ATTENTION/WARNING/CRITICAL)       | ✅   |
+| `GET /health`  | Health check simple                                 | ❌   |
+| `GET /limits`  | Límites de la Free Tier                             | ✅   |
+| `GET /metrics` | Métricas Prometheus para Grafana                    | ❌   |
 
-> **🔒 Autenticación:** Los endpoints protegidos requieren el header `X-API-Key` con tu clave configurada en el `.env`.
+> **🔒 Autenticación:** Los endpoints protegidos requieren el header `X-API-Key` con tu clave configurada en el `.env`. El endpoint `/metrics` es público para facilitar el scrapeo local.
 
 ## Instalación de Go
 
 ### macOS
+
 ```bash
 brew install go
 ```
 
 ### Linux (Ubuntu/Debian)
+
 ```bash
 sudo apt update
 sudo apt install golang-go
 ```
 
 ### Oracle Linux / RHEL
+
 ```bash
 sudo dnf install golang
 ```
@@ -145,12 +154,12 @@ curl -H "X-API-Key: tu-clave-secreta" http://localhost:8088/usage
 
 ## Estados posibles
 
-| Status | Significado |
-|--------|-------------|
-| `OK` | Uso < 60% |
+| Status      | Significado      |
+| ----------- | ---------------- |
+| `OK`        | Uso < 60%        |
 | `ATTENTION` | Uso entre 60-80% |
-| `WARNING` | Uso entre 80-90% |
-| `CRITICAL` | Uso > 90% |
+| `WARNING`   | Uso entre 80-90% |
+| `CRITICAL`  | Uso > 90%        |
 
 ## Free Tier Limits (Always Free)
 
@@ -178,6 +187,7 @@ chmod +x watcher
 ### Ejecutar como servicio (systemd)
 
 Crear `/etc/systemd/system/oracle-watcher.service`:
+
 ```ini
 [Unit]
 Description=Oracle Free Tier Watcher
@@ -206,12 +216,14 @@ Para despliegue automático en tu Oracle Free Tier instance:
 👉 **[Ver guía completa en QUICKSTART.md](QUICKSTART.md)**
 
 **Instalación rápida:**
+
 ```bash
 # En tu instancia Oracle
 curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ```
 
 Coolify te da:
+
 - ⚡ Deploy en 30 segundos tras cada `git push`
 - 🖥️ UI web intuitiva
 - 🔐 SSL automático
@@ -219,12 +231,10 @@ Coolify te da:
 - 🔄 Rollback fácil
 
 **Flujo automático:**
+
 ```
 git push → GitHub Actions → Webhook → Coolify → Deploy ✅
 ```
-
-
-
 
 ## Aprendiendo Go
 
@@ -246,6 +256,7 @@ git push → GitHub Actions → Webhook → Coolify → Deploy ✅
 - [📨 Postiz Deployment](./POSTIZ_DEPLOYMENT.md) - Cómo desplegar el CMS de redes sociales.
 - [📦 OCI Object Storage](./OCI_OBJECT_STORAGE.md) - Configuración de S3 para medios.
 - [🔒 Security Guide](./SECURITY.md) - Mejores prácticas y rotación de claves.
+- [📊 Grafana Guide](./GRAFANA_GUIDE.md) - Configuración de monitoreo en Grafana Cloud.
 - [📜 Changelog](./CHANGELOG.md) - Historial de mejoras.
 
 ---
@@ -273,13 +284,13 @@ Aunque este monitor es fiable, la red de seguridad definitiva es configurar una 
    - **Threshold:** 0.01 (1% del presupuesto).
    - **Type:** Actual (o Forecasted para que te avise antes).
    - **Email:** Tu dirección.
-   
-*Si por algún error cualquier cosa te gasta 0,01€, Oracle te enviará un email inmediatamente.*
+
+_Si por algún error cualquier cosa te gasta 0,01€, Oracle te enviará un email inmediatamente._
 
 ## ✅ Mejoras Implementadas
 
 - [x] **🔒 Autenticación con API Key:** Protege los endpoints con `X-API-Key` header
-- [x] **📊 Logging estructurado:** Logs en JSON con zerolog para mejor observabilidad  
+- [x] **📊 Logging estructurado:** Logs en JSON con zerolog para mejor observabilidad
 - [x] **⚡ Llamadas paralelas a OCI:** Uso de goroutines para reducir tiempo de respuesta
 - [x] **✔️ Validación de credenciales:** Verifica que `.env` esté correctamente configurado al iniciar
 - [x] **📝 Puerto normalizado:** Puerto 8088 por defecto consistente en todo el proyecto
@@ -294,6 +305,4 @@ Aunque este monitor es fiable, la red de seguridad definitiva es configurar una 
 - [ ] **Añadir alertas automáticas:** Integrar notificaciones (Discord/Telegram o Email vía SMTP) si el uso pasa del 80%.
 - [ ] **Gráfico de uso:** Endpoint opcional para generar una pequeña tabla o gráfico en ASCII/HTML.
 - [ ] **Health Check de instancia:** Si el script detecta uso de CPU < 15%, avisar que la instancia corre riesgo de ser borrada por Oracle.
-- [ ] **Métricas Prometheus:** Exponer métricas para integración con Grafana
-
-
+- [x] **Métricas Prometheus:** Exponer métricas para integración con Grafana
