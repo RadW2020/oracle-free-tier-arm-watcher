@@ -43,3 +43,9 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trigger Coolify Deployment
+        run: |
+          curl --fail --request GET \
+            '${{ secrets.COOLIFY_WEBHOOK }}' \
+            --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
