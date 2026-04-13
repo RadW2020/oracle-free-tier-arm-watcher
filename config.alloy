@@ -1,0 +1,26 @@
+// 1. Métricas de la CUENTA (vía Watcher)
+prometheus.scrape "oracle_watcher" {
+  targets = [{"__address__" = "localhost:8088"}]
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// 2. Métricas de la VM (CPU, RAM, Disco, etc.)
+prometheus.exporter.unix "local_system" {
+  include_exporter_metrics = true
+}
+
+prometheus.scrape "local_system" {
+  targets    = prometheus.exporter.unix.local_system.targets
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// 3. Envío a Grafana Cloud
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = "https://prometheus-prod-65-prod-eu-west-2.grafana.net/api/prom/push"
+    basic_auth {
+      username = "2983486"
+      password = env("GRAFANA_CLOUD_API_TOKEN")
+    }
+  }
+}

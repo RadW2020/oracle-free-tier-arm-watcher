@@ -12,18 +12,6 @@ Servicio ligero para monitorear el uso de tus recursos y evitar cargos inesperad
 - **Eficiente** - Uso mínimo de RAM/CPU.
 - **Alertas** - Monitoreo de OCPUs, RAM, Disco y Transferencia.
 
-👉 **[Ir a documentación del Watcher](#watcher-go-details)**
-
-### 2. 📨 Postiz Social Media Butler (Full Stack)
-
-Instancia completa de Postiz desplegada con arquitectura distribuida (Temporal + ES + Postgres).
-
-- **Auto-gestionado** - Control total de tus redes sociales.
-- **Alta disponibilidad** - Configurado sobre Temporal.io.
-- **Seguro** - Configuración endurecida para OCI.
-
-👉 **[Ver Guía de Despliegue de Postiz](./POSTIZ_DEPLOYMENT.md)**
-
 ---
 
 <a name="watcher-go-details"></a>
@@ -253,8 +241,6 @@ git push → GitHub Actions → Webhook → Coolify → Deploy ✅
 ## 📚 Documentación de Referencia
 
 - [🚀 Quick Start Guide](./QUICKSTART.md) - Instalación rápida en 5 minutos.
-- [📨 Postiz Deployment](./POSTIZ_DEPLOYMENT.md) - Cómo desplegar el CMS de redes sociales.
-- [📦 OCI Object Storage](./OCI_OBJECT_STORAGE.md) - Configuración de S3 para medios.
 - [🔒 Security Guide](./SECURITY.md) - Mejores prácticas y rotación de claves.
 - [📊 Grafana Guide](./GRAFANA_GUIDE.md) - Configuración de monitoreo en Grafana Cloud.
 - [📜 Changelog](./CHANGELOG.md) - Historial de mejoras.

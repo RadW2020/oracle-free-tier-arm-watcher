@@ -21,6 +21,7 @@ nano .env
 ```
 
 **Credenciales necesarias:**
+
 - `OCI_TENANCY_ID`, `OCI_USER_ID`, `OCI_FINGERPRINT` → OCI Console → Profile
 - `OCI_PRIVATE_KEY_PATH` → Ruta a tu archivo `.pem`
 - `OCI_REGION` → Tu región (ej: `eu-madrid-1`)
@@ -101,12 +102,12 @@ curl -H "X-API-Key: tu-clave" https://tu-app.com/usage | jq
 
 ### Estados
 
-| Status | % | Acción |
-|--------|---|--------|
-| OK | <60% | ✅ Todo bien |
-| ATTENTION | 60-80% | ⚠️ Revisar |
-| WARNING | 80-90% | 🟡 Precaución |
-| CRITICAL | >90% | 🔴 Límite cerca |
+| Status    | %      | Acción          |
+| --------- | ------ | --------------- |
+| OK        | <60%   | ✅ Todo bien    |
+| ATTENTION | 60-80% | ⚠️ Revisar      |
+| WARNING   | 80-90% | 🟡 Precaución   |
+| CRITICAL  | >90%   | 🔴 Límite cerca |
 
 ---
 
@@ -123,15 +124,19 @@ Si tienes dominio:
 ## Troubleshooting
 
 ### Error: "Unauthorized"
+
 → Asegúrate de pasar `X-API-Key` en el header
 
 ### Error: "OCI not configured"
+
 → Verifica variables de entorno en Coolify
 
 ### Error: "Private key not found"
+
 → Verifica que `/app/key.pem` existe en Files
 
 ### Coolify no accesible
+
 ```bash
 # Verificar firewall
 sudo ufw allow 8000/tcp
@@ -155,19 +160,6 @@ docker ps | grep coolify
 - [ ] `/health` responde OK
 
 ---
-
-## 📨 Bonus: Desplegar Postiz (CMS de Redes Sociales)
-
-Si ya tienes Coolify instalado, puedes desplegar tu propio butler de redes sociales usando el **Ultimate Golden Compose**:
-
-1.  Crea un nuevo proyecto en Coolify llamado `postiz`.
-2.  Añade un recurso de tipo **Docker Compose**.
-3.  Copia el contenido de [`POSTIZ_COMPOSE_REFERENCE.yaml`](./POSTIZ_COMPOSE_REFERENCE.yaml).
-4.  Cámbialo según tus dominios y dale a **Deploy**.
-
-> **Nota:** Postiz requiere al menos 4GB de RAM libres. Asegúrate de usar la instancia ARM de 24GB.
-
-👉 **[Ver guía detallada de Postiz](./POSTIZ_DEPLOYMENT.md)**
 
 ---
 

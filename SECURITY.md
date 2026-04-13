@@ -3,7 +3,9 @@
 ## Archivos Sensibles
 
 ### ✅ Estado Actual: SEGURO
+
 Los siguientes archivos **NO están trackeados en Git**:
+
 - ✅ `.env` - Credenciales de OCI y API Key
 - ✅ `key.pem` - Clave privada de OCI
 - ✅ `*.pem` - Cualquier otro archivo de clave
@@ -20,6 +22,7 @@ openssl rand -hex 32
 ```
 
 Añade esta clave a tu `.env`:
+
 ```env
 API_KEY=abc123...  # Tu clave generada
 ```
@@ -27,6 +30,7 @@ API_KEY=abc123...  # Tu clave generada
 ### 2. Proteger endpoints en producción
 
 Si `API_KEY` está configurada:
+
 - ✅ `/health` - **Público** (para health checks de Docker/Kubernetes)
 - 🔒 `/usage` - **Protegido** (requiere `X-API-Key`)
 - 🔒 `/status` - **Protegido** (requiere `X-API-Key`)
@@ -93,6 +97,7 @@ Si comprometes accidentalmente tus credenciales:
    - Actualiza tu `.env`
 
 2. **Rotar API_KEY del watcher:**
+
    ```bash
    # Generar nueva clave
    openssl rand -hex 32
@@ -103,16 +108,7 @@ Si comprometes accidentalmente tus credenciales:
    - Actualiza las variables de entorno
    - Reinicia el contenedor
 
-## 📨 Seguridad en Postiz (Docker Compose)
-
-Al desplegar Postiz, ten en cuenta estas medidas adicionales:
-
-1. **JWT Secret:** Genera un secreto único y largo para `JWT_SECRET`.
-2. **Registro Cerrado:** Por defecto, hemos configurado `DISABLE_REGISTRATION=true`. El primer usuario debe registrarse con esta variable en `false` y luego volver a ponerla en `true`.
-3. **Temporal UI:** La interfaz de Temporal activa no tiene autenticación por defecto. Se ha movido al puerto 8085, pero es recomendable:
-   - No exponerla públicamente si no es necesario.
-   - Usar un Basic Auth vía Traefik si necesitas acceso externo.
-4. **Base de Datos:** Los contenedores de Postgres y Redis no exponen puertos al host (0.0.0.0) para evitar ataques externos. Solo se comunican por la red interna de Docker.
+---
 
 ---
 
