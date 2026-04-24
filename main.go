@@ -350,6 +350,12 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 			warnings = append(warnings, fmt.Sprintf("DB Storage at %d%%", usage.Database.StorageUsage.Percentage))
 		}
 	}
+	if usage.Bandwidth.Percentage > 0 {
+		percentages = append(percentages, usage.Bandwidth.Percentage)
+		if usage.Bandwidth.Percentage >= 50 {
+			warnings = append(warnings, fmt.Sprintf("Bandwidth at %d%% (%.1f GB / %d TB)", usage.Bandwidth.Percentage, usage.Bandwidth.EgressGB, usage.Bandwidth.LimitTB))
+		}
+	}
 
 	maxPercentage := 0
 	for _, p := range percentages {
@@ -414,6 +420,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 		usage.PublicIPs.Percentage,
 		usage.Database.AutonomousDBs.Percentage,
 		usage.Database.StorageUsage.Percentage,
+		usage.Bandwidth.Percentage,
 	}
 
 	maxPercentage := 0

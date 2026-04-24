@@ -108,6 +108,20 @@ var (
 		Help: "Limit of Database Storage allowed in Free Tier",
 	})
 
+	// Bandwidth Metrics
+	bandwidthEgressUsed = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_bandwidth_egress_gb_used",
+		Help: "Egress bandwidth used this month (GB)",
+	})
+	bandwidthEgressLimit = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_bandwidth_egress_tb_limit",
+		Help: "Egress bandwidth limit per month (TB)",
+	})
+	bandwidthPercentage = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_bandwidth_egress_percentage",
+		Help: "Percentage of monthly egress bandwidth used",
+	})
+
 	// General Status
 	overallStatus = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "oci_overall_status",
@@ -158,6 +172,11 @@ func updateMetrics(usage *AllUsage) {
 	databaseStorageUsed.Set(usage.Database.StorageUsage.Used)
 	databaseStorageLimit.Set(usage.Database.StorageUsage.Limit)
 
+	// Bandwidth
+	bandwidthEgressUsed.Set(usage.Bandwidth.EgressGB)
+	bandwidthEgressLimit.Set(float64(usage.Bandwidth.LimitTB))
+	bandwidthPercentage.Set(float64(usage.Bandwidth.Percentage))
+
 	// Calcular status numérico
 	maxPercent := 0
 	percentages := []int{
@@ -169,6 +188,7 @@ func updateMetrics(usage *AllUsage) {
 		usage.PublicIPs.Percentage,
 		usage.Database.AutonomousDBs.Percentage,
 		usage.Database.StorageUsage.Percentage,
+		usage.Bandwidth.Percentage,
 	}
 	for _, p := range percentages {
 		if p > maxPercent {

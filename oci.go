@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/database"
 	"github.com/oracle/oci-go-sdk/v65/loadbalancer"
+	"github.com/oracle/oci-go-sdk/v65/monitoring"
 	"github.com/oracle/oci-go-sdk/v65/objectstorage"
 )
 
@@ -443,15 +445,51 @@ func getDatabaseUsage(provider common.ConfigurationProvider, compartmentID strin
 	return usage
 }
 
-// getBandwidthUsage obtiene el uso de transferencia (egress) aproximado
+// getBandwidthUsage obtiene el uso de transferencia (egress) del mes actual
+// usando la API de Monitoring de OCI (VnicToNetworkBytes)
 func getBandwidthUsage(provider common.ConfigurationProvider, compartmentID string) BandwidthUsage {
 	usage := BandwidthUsage{LimitTB: Limits.Bandwidth.EgressTBPerMonth}
 
-	// Por ahora devolvemos 0 hasta que implementemos la query de usageapi
-	// ya que requiere permisos específicos de billing que el usuario podría no tener.
-	// Pero dejamos la estructura lista.
-	usage.EgressGB = 0
-	usage.Percentage = 0
+	client, err := monitoring.NewMonitoringClientWithConfigurationProvider(provider)
+	if err != nil {
+		usage.Error = err.Error()
+		return usage
+	}
+
+	now := time.Now().UTC()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	request := monitoring.SummarizeMetricsDataRequest{
+		CompartmentId: common.String(compartmentID),
+		SummarizeMetricsDataDetails: monitoring.SummarizeMetricsDataDetails{
+			Namespace: common.String("oci_vcn"),
+			Query:     common.String("VnicToNetworkBytes[1d].sum()"),
+			StartTime: &common.SDKTime{Time: startOfMonth},
+			EndTime:   &common.SDKTime{Time: now},
+		},
+	}
+
+	response, err := client.SummarizeMetricsData(context.Background(), request)
+	if err != nil {
+		usage.Error = err.Error()
+		return usage
+	}
+
+	var totalBytes float64
+	for _, metric := range response.Items {
+		for _, datapoint := range metric.AggregatedDatapoints {
+			if datapoint.Value != nil {
+				totalBytes += *datapoint.Value
+			}
+		}
+	}
+
+	egressGB := totalBytes / (1024 * 1024 * 1024)
+	limitGB := float64(Limits.Bandwidth.EgressTBPerMonth) * 1024
+	usage.EgressGB = egressGB
+	if limitGB > 0 {
+		usage.Percentage = int((egressGB / limitGB) * 100)
+	}
 
 	return usage
 }
