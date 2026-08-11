@@ -61,24 +61,29 @@ entorno de la cuenta de Checkly con `{{NOMBRE}}`:
 | `ORACLE_MONITOR_URL` | los 3 checks de OCI | ✅ existe |
 | `ORACLE_MONITOR_API_KEY` | los 3 checks de OCI | ✅ existe |
 | `API_URL`, `WEB_URL`, `MINIO_URL` | checks de Shogunito | ✅ existen |
-| `CIAOBOX_CRON_TOKEN` | `ciaobox/weekly-close-trigger` | ❌ **hay que crearla** |
+| `CIAOBOX_CRON_TOKEN` | `ciaobox/weekly-close-trigger` | ✅ existe (`locked`) |
 
 Los checks de OCI y el trigger de Ciaobox tenían el secreto escrito en claro en
 Checkly (los creó un script bash con la clave literal). Aquí se referencian por
 variable. Para OCI las variables ya existen y contienen exactamente el mismo
 valor, así que el cambio es funcionalmente nulo.
 
-`CIAOBOX_CRON_TOKEN` todavía no existe: hay que crearla **antes del primer
-deploy** con el token que hoy lleva la cabecera `Authorization` de ese check
-(el valor va sin el prefijo `Bearer `, que ya está en el código):
+`CIAOBOX_CRON_TOKEN` se creó extrayendo el token de la cabecera `Authorization`
+que el check ya tenía en Checkly, sin el prefijo `Bearer ` (que vive en el
+código). Está marcada como `locked`, así que su valor no se lee desde el
+dashboard ni desde la API. Se verificó que `'Bearer ' + variable` reconstruye
+exactamente la cabecera original, de modo que el deploy no cambia el
+comportamiento del check.
+
+Si alguna vez hay que rotarla:
 
 ```bash
 set -a && . ../.env && set +a
-curl -X POST "https://api.checklyhq.com/v1/variables" \
+curl -X PUT "https://api.checklyhq.com/v1/variables/CIAOBOX_CRON_TOKEN" \
   -H "Authorization: Bearer $CHECKLY_API_KEY" \
   -H "X-Checkly-Account: $CHECKLY_ACCOUNT_ID" \
   -H "Content-Type: application/json" \
-  -d '{"key":"CIAOBOX_CRON_TOKEN","value":"<TOKEN>","locked":true}'
+  -d '{"value":"<TOKEN NUEVO>","locked":true}'
 ```
 
 ## Estado del import: hay un plan pendiente
