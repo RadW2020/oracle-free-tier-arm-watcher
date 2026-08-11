@@ -10,8 +10,13 @@ new ApiCheck('ciaobox-weekly-close-trigger-ksR0Xopp', {
     headers: [
       {
         key: 'Authorization',
-        value: 'Bearer {{CIAOBOX_CRON_TOKEN}}',
-        locked: true,
+        // Triple llave a propósito: Checkly templatiza con Handlebars y {{x}}
+        // escapa HTML, así que el '=' del padding base64 del token salía como
+        // '&#x3D;' y el endpoint devolvía 401. {{{x}}} no escapa.
+        // Tampoco lleva `locked`: una cabecera bloqueada se guarda como secreto
+        // opaco y no se interpola. El secreto vive en la variable de cuenta
+        // CIAOBOX_CRON_TOKEN, que sí está locked; aquí solo hay una referencia.
+        value: 'Bearer {{{CIAOBOX_CRON_TOKEN}}}',
       },
     ],
     assertions: [

@@ -73,6 +73,18 @@ que el check ya tenía en Checkly, sin el prefijo `Bearer ` (que vive en el
 código). Se verificó que `'Bearer ' + variable` reconstruye exactamente la
 cabecera original, de modo que el deploy no cambia el comportamiento del check.
 
+⚠️ **Usa `{{{VAR}}}` (triple llave) para cualquier valor con caracteres
+especiales.** Checkly templatiza con Handlebars, y `{{VAR}}` escapa HTML: un
+token base64 acabado en `=` se envía como `&#x3D;` y el endpoint responde 401,
+sin más pista que el fallo. Le pasó a `CIAOBOX_CRON_TOKEN`. Hoy las demás
+variables son alfanuméricas o URLs sin `=` ni `&`, así que no les afecta — pero
+si rotas una clave y la nueva trae un carácter especial, romperá igual. Ante la
+duda, triple llave.
+
+⚠️ **Una cabecera con `locked: true` no se interpola.** Se guarda como secreto
+opaco y el `{{...}}` viaja literal. No hace falta bloquear la cabecera: lo que
+se bloquea es la variable de cuenta.
+
 ⚠️ **`locked` protege menos de lo que parece.** Oculta el valor en la UI del
 dashboard, pero `GET /v1/variables` con una API key de cuenta lo sigue
 devolviendo en claro. Sirve para evitar lecturas casuales, no como control de
