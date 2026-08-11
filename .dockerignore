@@ -1,0 +1,25 @@
+# El Dockerfile hace `COPY . .` para compilar el binario Go. Sin este fichero,
+# el proyecto Node de Checkly (node_modules incluido) entraría en el contexto
+# de build y engordaría la imagen sin aportar nada al binario.
+checkly/
+
+# Entorno y secretos
+.env
+*.pem
+*.key
+
+# Binarios locales
+oracle-free-tier-watcher
+watcher
+
+# Git e IDE
+.git/
+.github/
+.idea/
+.vscode/
+.claude/
+.zencoder/
+.zenflow/
+
+# Documentación
+*.md
