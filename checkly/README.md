@@ -70,10 +70,13 @@ valor, así que el cambio es funcionalmente nulo.
 
 `CIAOBOX_CRON_TOKEN` se creó extrayendo el token de la cabecera `Authorization`
 que el check ya tenía en Checkly, sin el prefijo `Bearer ` (que vive en el
-código). Está marcada como `locked`, así que su valor no se lee desde el
-dashboard ni desde la API. Se verificó que `'Bearer ' + variable` reconstruye
-exactamente la cabecera original, de modo que el deploy no cambia el
-comportamiento del check.
+código). Se verificó que `'Bearer ' + variable` reconstruye exactamente la
+cabecera original, de modo que el deploy no cambia el comportamiento del check.
+
+⚠️ **`locked` protege menos de lo que parece.** Oculta el valor en la UI del
+dashboard, pero `GET /v1/variables` con una API key de cuenta lo sigue
+devolviendo en claro. Sirve para evitar lecturas casuales, no como control de
+acceso: quien tenga una API key de la cuenta puede leer cualquier variable.
 
 Si alguna vez hay que rotarla:
 
@@ -125,7 +128,9 @@ siguiente deploy.
   `< 70`, igual que la del CRITICAL, así que ambos disparan a la vez. El código
   refleja el estado real; corregirlo a `< 50` es un cambio de comportamiento y
   se ha dejado como decisión aparte.
-- **Variables de cuenta sin `locked`.** `ORACLE_MONITOR_API_KEY` y
-  `CHECKLY_TEST_USER_PASSWORD` se leen en claro desde el dashboard y la API.
-- **`CHECKLY_TEST_USER_PASSWORD` vale literalmente `"null"`**, así que cualquier
-  spec que dependa de ella no puede autenticarse.
+- **`CHECKLY_TEST_USER_PASSWORD` no tiene valor**: la API la devuelve como
+  `null`, no como cadena vacía ni como texto. Cualquier spec que dependa de ella
+  no puede autenticarse.
+- **Las variables de URL siguen sin `locked`**, que es lo razonable: no son
+  secretos. Las dos que sí lo son (`ORACLE_MONITOR_API_KEY`,
+  `CIAOBOX_CRON_TOKEN`) están marcadas, con la limitación de arriba.
