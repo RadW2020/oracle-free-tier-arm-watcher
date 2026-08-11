@@ -89,34 +89,41 @@ curl -X PUT "https://api.checklyhq.com/v1/variables/CIAOBOX_CRON_TOKEN" \
   -d '{"value":"<TOKEN NUEVO>","locked":true}'
 ```
 
-## Estado del import: hay un plan pendiente
+## Estado: este repo ya manda sobre la cuenta
 
 Los 6 checks de Shogunito ya eran nativos del CLI. Los otros 8 checks, los 2
 grupos, el canal de email y la status page se crearon por API o a mano, así que
 no tenían `logicalId` y el CLI no los reconocía. Un `deploy` los habría
 duplicado.
 
-Para adoptarlos se creó un **plan de importación** (`checkly import`), del que
-salió el código en `src/oci`, `src/ciaobox`, `src/eduscheduler`,
-`src/status-page`, `src/groups.ts` y `src/alert-channels.ts`.
+Para adoptarlos se usó `checkly import` (plan → apply → commit), del que salió
+el código en `src/oci`, `src/ciaobox`, `src/eduscheduler`, `src/status-page`,
+`src/groups.ts` y `src/alert-channels.ts`.
 
-**El plan está creado pero no aplicado.** Los recursos todavía no están
-enlazados al proyecto, así que **desplegar ahora crearía duplicados**. Los pasos
-que faltan:
+El plan `c1d58198-dcf3-4446-a548-8ff2d8d2580b` se aplicó y commiteó el
+2026-08-11, con un deploy en medio para verificar antes de perder el failsafe.
+Los 14 checks tienen ya `logicalId`, así que **los 29 recursos del proyecto
+están gestionados desde aquí**. El diff del deploy salió con los 29 como
+*Update and Unchanged*, sin *Create* ni *Delete*: cero duplicados, cero
+borrados, IDs e historial intactos, y el ping token del heartbeat sin cambiar.
+
+⚠️ **A partir de ahora, borrar un construct de este repo borra el recurso en
+Checkly en el siguiente deploy.** No hay red de seguridad.
+
+Flujo normal de trabajo:
 
 ```bash
 cd checkly
 set -a && . ../.env && set +a
 
-npx checkly import apply     # enlaza los recursos existentes con este código
-npx checkly deploy --preview # diff: debería salir sin cambios destructivos
-npx checkly import commit    # cierra la sesión de import
-npx checkly deploy           # a partir de aquí, este repo manda
+npx checkly validate                              # sintaxis y tipos
+npx checkly test --grep "<nombre del check>"      # ejecuta contra el endpoint real
+npx checkly deploy --preview                      # diff antes de aplicar
+npx checkly deploy
 ```
 
-`apply` es reversible con `npx checkly import cancel`. `commit` no: a partir de
-ahí, borrar un construct de este repo borra el recurso en Checkly en el
-siguiente deploy.
+Cuidado con `checkly test` sobre `ciaobox weekly-close trigger`: es un POST
+contra `/api/cron/weekly-close` y dispara una acción de negocio real.
 
 ## Pendiente
 
