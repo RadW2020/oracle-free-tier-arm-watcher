@@ -16,7 +16,9 @@ new ApiCheck('oci-bandwidth-warning-50-5-tb-mHqJeYhB', {
     assertions: [
       AssertionBuilder.statusCode().equals(200),
       AssertionBuilder.jsonBody('$.configured').equals('true'),
-      AssertionBuilder.jsonBody('$.usage.bandwidth.percentage').lessThan('70'),
+      // 50%, no 70: con 70 este check disparaba a la vez que el CRITICAL y el
+      // aviso temprano de 5 TB nunca llegaba.
+      AssertionBuilder.jsonBody('$.usage.bandwidth.percentage').lessThan('50'),
     ],
   },
   degradedResponseTime: 5000,

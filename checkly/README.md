@@ -131,10 +131,10 @@ contra `/api/cron/weekly-close` y dispara una acción de negocio real.
   generó construct para él; se sigue gestionando desde el dashboard web. Además
   filtra por tags `critical` y `cloudflare`, que ningún check tiene, así que hoy
   se ve vacío.
-- **`OCI Bandwidth WARNING (50% = 5TB)` no avisa al 50 %.** Su aserción es
-  `< 70`, igual que la del CRITICAL, así que ambos disparan a la vez. El código
-  refleja el estado real; corregirlo a `< 50` es un cambio de comportamiento y
-  se ha dejado como decisión aparte.
+- **Los dos avisos de bandwidth están escalonados**, ya sí: WARNING a `< 50`
+  (5 TB) y CRITICAL a `< 70` (7 TB). Venían los dos con `< 70`, de modo que
+  disparaban a la vez y el aviso temprano no existía. Arreglado y desplegado con
+  el uso al 0 %, así que el cambio no generó ninguna alerta.
 - **`CHECKLY_TEST_USER_PASSWORD` no tiene valor**: la API la devuelve como
   `null`, no como cadena vacía ni como texto. Cualquier spec que dependa de ella
   no puede autenticarse.
