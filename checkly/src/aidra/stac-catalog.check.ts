@@ -36,7 +36,7 @@ new ApiCheck('aidra-stac-catalog', {
   tags: [
     'aidra',
   ],
-  frequency: Frequency.EVERY_6H,
+  frequency: Frequency.EVERY_2H,
   group: aidraGroup,
   runParallel: false,
 })

@@ -33,7 +33,7 @@ new UrlMonitor('aidra-grafana-dashboard', {
   tags: [
     'aidra',
   ],
-  frequency: Frequency.EVERY_6H,
+  frequency: Frequency.EVERY_1H,
   group: aidraGroup,
   // Los uptime monitors no admiten estrategias de reintento con
   // varios intentos en este plan: sólo un reintento único.

@@ -5,7 +5,7 @@ new ApiCheck('minio-health-check', {
   name: 'Shogunito MinIO S3 API',
   activated: true,
   group: shogunitoGroup,
-  frequency: Frequency.EVERY_12H,
+  frequency: Frequency.EVERY_1H,
   locations: ['eu-central-1', 'us-east-1'],
   request: {
     url: '{{MINIO_URL}}/minio/health/live',

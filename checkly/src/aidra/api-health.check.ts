@@ -36,7 +36,7 @@ new ApiCheck('aidra-api-health', {
   tags: [
     'aidra',
   ],
-  frequency: Frequency.EVERY_6H,
+  frequency: Frequency.EVERY_1H,
   group: aidraGroup,
   runParallel: false,
 })

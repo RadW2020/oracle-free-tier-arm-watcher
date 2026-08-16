@@ -5,7 +5,7 @@ new ApiCheck('api-health-check', {
   name: 'Shogunito API Health',
   activated: true,
   group: shogunitoGroup,
-  frequency: Frequency.EVERY_12H,
+  frequency: Frequency.EVERY_30M,
   locations: ['eu-central-1', 'us-east-1'],
   request: {
     url: '{{API_URL}}/health',

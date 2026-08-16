@@ -30,7 +30,7 @@ new ApiCheck('oci-bandwidth-warning-50-5-tb-mHqJeYhB', {
   locations: [
     'eu-central-1',
   ],
-  frequency: Frequency.EVERY_12H,
+  frequency: Frequency.EVERY_3H,
   alertChannels: [
     raulEmailAlert,
   ],

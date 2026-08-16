@@ -28,7 +28,7 @@ new ApiCheck('oci-bandwidth-critical-70-7-tb-NTGCJelN', {
   locations: [
     'eu-central-1',
   ],
-  frequency: Frequency.EVERY_12H,
+  frequency: Frequency.EVERY_3H,
   alertChannels: [
     raulEmailAlert,
   ],

@@ -6,7 +6,7 @@ new MultiStepCheck('shogunito-infra-check', {
   name: 'Shogunito Infrastructure (MultiStep)',
   activated: true,
   group: shogunitoGroup,
-  frequency: Frequency.EVERY_6H,
+  frequency: Frequency.EVERY_3H,
   locations: ['eu-central-1', 'us-east-1'],
   runtimeId: '2025.04',
   code: {

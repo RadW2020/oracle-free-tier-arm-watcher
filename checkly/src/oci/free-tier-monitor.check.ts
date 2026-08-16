@@ -27,7 +27,7 @@ new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
   locations: [
     'eu-central-1',
   ],
-  frequency: Frequency.EVERY_12H,
+  frequency: Frequency.EVERY_1H,
   alertChannels: [
     raulEmailAlert,
   ],

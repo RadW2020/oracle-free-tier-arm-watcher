@@ -5,7 +5,7 @@ new ApiCheck('api-docs-check', {
   name: 'Shogunito API Swagger JSON',
   activated: true,
   group: shogunitoGroup,
-  frequency: Frequency.EVERY_12H,
+  frequency: Frequency.EVERY_6H,
   locations: ['eu-central-1', 'us-east-1'],
   request: {
     url: '{{API_URL}}/api/v1/docs-json',
