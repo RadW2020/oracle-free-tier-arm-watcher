@@ -27,7 +27,10 @@ new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
   locations: [
     'eu-central-1',
   ],
-  frequency: Frequency.EVERY_1H,
+  // 3 h y no 1 h: este check pega al servicio Go, que a su vez llama a la
+  // API de OCI. A 1 h eran 24 consultas diarias contra Oracle en vez de 8,
+  // y no compensa arriesgar rate limits en la API que vigila la factura.
+  frequency: Frequency.EVERY_3H,
   alertChannels: [
     raulEmailAlert,
   ],

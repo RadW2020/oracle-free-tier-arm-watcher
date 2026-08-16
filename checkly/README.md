@@ -46,15 +46,15 @@ Las dos cosas se facturan distinto, y elegir mal sale caro:
   facturan **por unidad** (10 en el plan), no por ejecución. Su frecuencia
   es gratis.
 
-Presupuesto actual: **7.787 / 10.000 API runs al mes (78%)**, 61 / 1.000 browser
+Presupuesto actual: **7.300 / 10.000 API runs al mes (73%)**, 61 / 1.000 browser
 runs. Las frecuencias están por tramos según lo que aporta sondear más a menudo,
 no todo al máximo:
 
 | Tramo | Checks | Por qué |
 |---|---|---|
 | 30 min | Shogunito API Health | De él dependen los demás checks de Shogunito |
-| 1 h | Web UI, MinIO, AIDRA API Health, Oracle Free Tier Monitor, AIDRA Dashboard | Caída visible para un usuario |
-| 2–3 h | AIDRA STAC, bandwidth WARNING y CRITICAL, infra multistep | Cambian despacio; el multistep cuesta el doble por ejecución |
+| 1 h | Shogunito Web UI, MinIO, AIDRA API Health, AIDRA Dashboard | Caída visible para un usuario |
+| 2–3 h | AIDRA STAC, bandwidth WARNING y CRITICAL, infra multistep, Oracle Free Tier Monitor | Cambian despacio; el multistep cuesta el doble por ejecución, y el Free Tier Monitor llama a la API de OCI a través del servicio Go |
 | 6 h | Shogunito API Swagger JSON | Documentación estática: sondearla más es gastar cuota |
 
 Los avisos de bandwidth se quedan en 3 h a propósito: el tráfico se acumula a lo
