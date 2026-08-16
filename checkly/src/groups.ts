@@ -1,5 +1,6 @@
 import { CheckGroupV2, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from './alert-channels'
+import { standardEscalation } from './escalation'
 
 export const shogunitoGroup = new CheckGroupV2('shogunito-VwUfFB4z', {
   name: 'Shogunito',
@@ -12,7 +13,23 @@ export const shogunitoGroup = new CheckGroupV2('shogunito-VwUfFB4z', {
   alertChannels: [
     raulEmailAlert,
   ],
-  alertEscalationPolicy: 'global',
+  alertEscalationPolicy: standardEscalation,
+  retryStrategy: RetryStrategyBuilder.noRetries(),
+  runParallel: false,
+})
+
+export const aidraGroup = new CheckGroupV2('aidra', {
+  name: 'AIDRA',
+  locations: [
+    'eu-central-1',
+  ],
+  tags: [
+    'aidra',
+  ],
+  alertChannels: [
+    raulEmailAlert,
+  ],
+  alertEscalationPolicy: standardEscalation,
   retryStrategy: RetryStrategyBuilder.noRetries(),
   runParallel: false,
 })
@@ -28,7 +45,7 @@ export const eduSchedulerGroup = new CheckGroupV2('edu-scheduler-In2dyugM', {
   alertChannels: [
     raulEmailAlert,
   ],
-  alertEscalationPolicy: 'global',
+  alertEscalationPolicy: standardEscalation,
   retryStrategy: RetryStrategyBuilder.noRetries(),
   runParallel: false,
 })

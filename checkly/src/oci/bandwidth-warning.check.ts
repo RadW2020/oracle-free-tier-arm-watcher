@@ -1,5 +1,6 @@
-import { AlertEscalationBuilder, ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
+import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { standardEscalation } from '../escalation'
 
 new ApiCheck('oci-bandwidth-warning-50-5-tb-mHqJeYhB', {
   name: 'OCI Bandwidth WARNING (50% = 5TB)',
@@ -33,13 +34,7 @@ new ApiCheck('oci-bandwidth-warning-50-5-tb-mHqJeYhB', {
   alertChannels: [
     raulEmailAlert,
   ],
-  alertEscalationPolicy: AlertEscalationBuilder.runBasedEscalation(1, {
-    amount: 0,
-    interval: 5,
-  }, {
-    enabled: false,
-    percentage: 10,
-  }),
+  alertEscalationPolicy: standardEscalation,
   retryStrategy: RetryStrategyBuilder.fixedStrategy({
     baseBackoffSeconds: 30,
     maxRetries: 2,

@@ -4,6 +4,7 @@ watcher
 
 # Environment
 .env
+.env.bak.*
 *.pem
 *.key
 

@@ -1,5 +1,8 @@
 import { StatusPage } from 'checkly/constructs'
 import {
+  aidraApiService,
+  aidraStacService,
+  aidraDashboardService,
   oracleFreeTierMonitorService,
   shogunitoApiService,
   shogunitoMinIoS3Service,
@@ -46,6 +49,14 @@ new StatusPage('uliber-co-system-status-BDS7AS4c', {
       services: [
         eduSchedulerApiService,
         eduSchedulerWebService,
+      ],
+    },
+    {
+      name: 'AIDRA',
+      services: [
+        aidraApiService,
+        aidraStacService,
+        aidraDashboardService,
       ],
     },
   ],

@@ -21,18 +21,67 @@ checkly/
 ├── checkly.config.ts          Proyecto: logicalId, checkMatch, runLocation
 ├── src/
 │   ├── alert-channels.ts      Canal de email → raul@uliber.com
-│   ├── groups.ts              Grupos Shogunito y EduScheduler
+│   ├── groups.ts              Grupos Shogunito, EduScheduler y AIDRA
 │   ├── oci/                   3 checks del Free Tier de Oracle
 │   ├── shogunito/             4 API + 1 browser + 1 multistep (+ specs Playwright)
-│   ├── ciaobox/               2 API + 1 heartbeat
-│   ├── eduscheduler/          2 API
-│   └── status-page/           Status page pública + sus 11 servicios
+│   ├── ciaobox/               1 API + 1 URL monitor + 1 heartbeat
+│   ├── eduscheduler/          1 API + 1 URL monitor
+│   ├── aidra/                 2 API + 1 URL monitor
+│   └── status-page/           Status page pública + sus 14 servicios
 └── SECURITY.md                Cómo tratar secretos en los checks
 ```
 
 Los ficheros `*.check.ts` bajo `src/` se cargan por `checkMatch`. Los que no
 llevan ese sufijo (`alert-channels.ts`, `groups.ts`, `status-page/services.ts`)
 se cargan porque otros los importan.
+
+## API checks vs. uptime monitors
+
+Las dos cosas se facturan distinto, y elegir mal sale caro:
+
+- **`ApiCheck` / `BrowserCheck` / `MultiStepCheck`** consumen la cuota de
+  ejecuciones (10.000 API runs/mes y 1.000 browser runs/mes en el plan).
+  Cada ejecución cuenta una.
+- **`UrlMonitor` / `TcpMonitor` / `DnsMonitor` / `HeartbeatMonitor`** se
+  facturan **por unidad** (10 en el plan), no por ejecución. Su frecuencia
+  es gratis.
+
+Por eso todo lo que sólo comprueba `statusCode == 200` va como `UrlMonitor`:
+como `ApiCheck` a 30 min costaba 1.460 runs/mes cada uno. Si un check
+necesita afirmar sobre el body, las cabeceras o usar un método distinto de
+GET, entonces sí tiene que ser `ApiCheck` — los `UrlMonitor` sólo admiten
+assertions de status code.
+
+Limitaciones del plan actual que ya se han topado (comprobadas con
+`checkly deploy --preview`, que las rechaza en validación):
+
+| Función | Estado |
+|---|---|
+| `Dashboard` | **1 incluido, y está gastado.** El CLI responde `This feature is not part of your plan` cuando en realidad es cupo lleno: hay que borrar el existente antes de crear otro |
+| `triggerIncident` (incidencias automáticas en la status page) | **No disponible** |
+| Reintentos múltiples en uptime monitors | **No disponible.** Sólo `singleRetry()` |
+| `MaintenanceWindow` | Sin probar; la tabla de precios lo marca como no incluido |
+
+Los 14 servicios de la status page se actualizan **a mano**: sin
+`triggerIncident` ningún check puede abrir una incidencia por su cuenta.
+
+## Que ningún check se quede mudo
+
+`checkly.config.ts` declara `checks.alertChannels: [raulEmailAlert]`, o sea que
+**todo check del proyecto avisa por defecto**. Sin eso, un check nuevo que no
+estuviera dentro de un grupo suscrito ni declarase su propio `alertChannels` no
+avisaría a nadie — y ese fallo no se nota hasta que algo se cae y nadie se
+entera. El canal es uno solo (email a `raul@uliber.com`), así que conviene que
+sea infalible.
+
+`sendDegraded: true` en el canal: los checks declaran `degradedResponseTime`,
+pero con el canal en `false` ese umbral no generaba ningún aviso.
+
+La escalación vive en `src/escalation.ts` y la usan los 17 checks, los 3
+grupos y el default de la config. Estaba duplicada literalmente en 8 ficheros
+y con `amount: 0`, o sea un único email por incidencia: si ese correo se
+perdía, la incidencia se perdía. Ahora avisa al primer fallo y recuerda 2
+veces cada 10 min mientras siga cayéndose.
 
 Las specs de Playwright (`src/shogunito/*.spec.ts`) las referencian explícitamente
 sus constructs. Por eso `browserChecks.testMatch` apunta a `*.browser.spec.ts`
@@ -139,10 +188,13 @@ contra `/api/cron/weekly-close` y dispara una acción de negocio real.
 
 ## Pendiente
 
-- **El dashboard `shogun-status` (id 871789) no está aquí.** `checkly import` no
-  generó construct para él; se sigue gestionando desde el dashboard web. Además
-  filtra por tags `critical` y `cloudflare`, que ningún check tiene, así que hoy
-  se ve vacío.
+- **El dashboard ya es código**, en `src/dashboard/`. El plan incluye 1 y lo
+  ocupaba `shogun-status` (id 871789), que filtraba por los tags `critical` y
+  `cloudflare` — tags que ningún check tiene, así que llevaba tiempo vacío.
+  `checkly import` no sabe importar dashboards (probado en la v6.9.8 y en la
+  v8.21: "No importable resources were found", por tipo y por ID), así que la
+  vía fue borrar el viejo para liberar el cupo y dejar que el código creara el
+  nuevo. Si algún día hay que rehacerlo, es el mismo camino: borrar y desplegar.
 - **Los dos avisos de bandwidth están escalonados**, ya sí: WARNING a `< 50`
   (5 TB) y CRITICAL a `< 70` (7 TB). Venían los dos con `< 70`, de modo que
   disparaban a la vez y el aviso temprano no existía. Arreglado y desplegado con

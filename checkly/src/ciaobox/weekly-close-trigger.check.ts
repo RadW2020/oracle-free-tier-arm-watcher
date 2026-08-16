@@ -1,5 +1,6 @@
-import { AlertEscalationBuilder, ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
+import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { standardEscalation } from '../escalation'
 
 new ApiCheck('ciaobox-weekly-close-trigger-ksR0Xopp', {
   name: 'ciaobox weekly-close trigger',
@@ -39,13 +40,7 @@ new ApiCheck('ciaobox-weekly-close-trigger-ksR0Xopp', {
   alertChannels: [
     raulEmailAlert,
   ],
-  alertEscalationPolicy: AlertEscalationBuilder.runBasedEscalation(1, {
-    amount: 0,
-    interval: 5,
-  }, {
-    enabled: false,
-    percentage: 10,
-  }),
+  alertEscalationPolicy: standardEscalation,
   retryStrategy: RetryStrategyBuilder.linearStrategy({
     baseBackoffSeconds: 60,
     maxRetries: 3,

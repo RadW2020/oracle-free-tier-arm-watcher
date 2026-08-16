@@ -1,5 +1,6 @@
-import { AlertEscalationBuilder, ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
+import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { standardEscalation } from '../escalation'
 
 new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
   name: 'Oracle Free Tier Monitor',
@@ -30,13 +31,7 @@ new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
   alertChannels: [
     raulEmailAlert,
   ],
-  alertEscalationPolicy: AlertEscalationBuilder.runBasedEscalation(1, {
-    amount: 0,
-    interval: 5,
-  }, {
-    enabled: false,
-    percentage: 10,
-  }),
+  alertEscalationPolicy: standardEscalation,
   retryStrategy: RetryStrategyBuilder.fixedStrategy({
     baseBackoffSeconds: 30,
     maxRetries: 2,

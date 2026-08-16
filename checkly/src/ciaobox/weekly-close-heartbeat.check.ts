@@ -1,5 +1,6 @@
-import { AlertEscalationBuilder, Frequency, HeartbeatMonitor, RetryStrategyBuilder } from 'checkly/constructs'
+import { Frequency, HeartbeatMonitor, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { standardEscalation } from '../escalation'
 
 new HeartbeatMonitor('ciaobox-weekly-close-heartbeat-6chrZXYQ', {
   name: 'Ciaobox weekly-close heartbeat',
@@ -19,13 +20,7 @@ new HeartbeatMonitor('ciaobox-weekly-close-heartbeat-6chrZXYQ', {
   alertChannels: [
     raulEmailAlert,
   ],
-  alertEscalationPolicy: AlertEscalationBuilder.runBasedEscalation(1, {
-    amount: 0,
-    interval: 5,
-  }, {
-    enabled: false,
-    percentage: 10,
-  }),
+  alertEscalationPolicy: standardEscalation,
   retryStrategy: RetryStrategyBuilder.noRetries(),
   runParallel: false,
 })

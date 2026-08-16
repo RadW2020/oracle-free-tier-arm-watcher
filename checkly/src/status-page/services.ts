@@ -1,5 +1,17 @@
 import { StatusPageService } from 'checkly/constructs'
 
+export const aidraApiService = new StatusPageService('aidra-api', {
+  name: 'AIDRA API',
+})
+
+export const aidraStacService = new StatusPageService('aidra-stac', {
+  name: 'AIDRA STAC Catalog',
+})
+
+export const aidraDashboardService = new StatusPageService('aidra-dashboard', {
+  name: 'AIDRA Dashboard (Grafana)',
+})
+
 export const ciaoboxCronService = new StatusPageService('ciaobox-cron-57Lpj5pI', {
   name: 'Ciaobox Cron',
 })

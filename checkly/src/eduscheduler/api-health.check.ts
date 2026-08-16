@@ -1,5 +1,6 @@
-import { AlertEscalationBuilder, ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
+import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
 import { eduSchedulerGroup } from '../groups'
+import { standardEscalation } from '../escalation'
 
 new ApiCheck('edu-scheduler-api-health-zJ9hn4l5', {
   name: 'EduScheduler API Health',
@@ -24,13 +25,7 @@ new ApiCheck('edu-scheduler-api-health-zJ9hn4l5', {
   ],
   frequency: Frequency.EVERY_30M,
   group: eduSchedulerGroup,
-  alertEscalationPolicy: AlertEscalationBuilder.runBasedEscalation(1, {
-    amount: 0,
-    interval: 5,
-  }, {
-    enabled: false,
-    percentage: 10,
-  }),
+  alertEscalationPolicy: standardEscalation,
   retryStrategy: RetryStrategyBuilder.fixedStrategy({
     baseBackoffSeconds: 30,
     maxRetries: 2,
