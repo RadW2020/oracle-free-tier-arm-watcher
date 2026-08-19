@@ -21,11 +21,10 @@ checkly/
 ├── checkly.config.ts          Proyecto: logicalId, checkMatch, runLocation
 ├── src/
 │   ├── alert-channels.ts      Canal de email → raul@uliber.com
-│   ├── groups.ts              Grupos Shogunito, EduScheduler y AIDRA
+│   ├── groups.ts              Grupos Shogunito y AIDRA
 │   ├── oci/                   3 checks del Free Tier de Oracle
 │   ├── shogunito/             4 API + 1 browser + 1 multistep (+ specs Playwright)
 │   ├── ciaobox/               1 API + 1 URL monitor + 1 heartbeat
-│   ├── eduscheduler/          1 API + 1 URL monitor
 │   ├── aidra/                 2 API + 1 URL monitor
 │   └── status-page/           Status page pública + sus 14 servicios
 └── SECURITY.md                Cómo tratar secretos en los checks
@@ -46,7 +45,7 @@ Las dos cosas se facturan distinto, y elegir mal sale caro:
   facturan **por unidad** (10 en el plan), no por ejecución. Su frecuencia
   es gratis.
 
-Presupuesto actual: **7.300 / 10.000 API runs al mes (73%)**, 61 / 1.000 browser
+Presupuesto actual: **5.840 / 10.000 API runs al mes (58%)**, 61 / 1.000 browser
 runs. Las frecuencias están por tramos según lo que aporta sondear más a menudo,
 no todo al máximo:
 
@@ -91,7 +90,7 @@ sea infalible.
 `sendDegraded: true` en el canal: los checks declaran `degradedResponseTime`,
 pero con el canal en `false` ese umbral no generaba ningún aviso.
 
-La escalación vive en `src/escalation.ts` y la usan los 17 checks, los 3
+La escalación vive en `src/escalation.ts` y la usan los 15 checks, los 2
 grupos y el default de la config. Estaba duplicada literalmente en 8 ficheros
 y con `amount: 0`, o sea un único email por incidencia: si ese correo se
 perdía, la incidencia se perdía. Ahora avisa al primer fallo y recuerda 2
@@ -172,8 +171,8 @@ no tenían `logicalId` y el CLI no los reconocía. Un `deploy` los habría
 duplicado.
 
 Para adoptarlos se usó `checkly import` (plan → apply → commit), del que salió
-el código en `src/oci`, `src/ciaobox`, `src/eduscheduler`, `src/status-page`,
-`src/groups.ts` y `src/alert-channels.ts`.
+el código en `src/oci`, `src/ciaobox`, `src/status-page`, `src/groups.ts` y
+`src/alert-channels.ts` (y un `src/eduscheduler` que se retiró después).
 
 El plan `c1d58198-dcf3-4446-a548-8ff2d8d2580b` se aplicó y commiteó el
 2026-08-11, con un deploy en medio para verificar antes de perder el failsafe.

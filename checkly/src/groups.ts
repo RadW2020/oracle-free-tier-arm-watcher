@@ -33,19 +33,3 @@ export const aidraGroup = new CheckGroupV2('aidra', {
   retryStrategy: RetryStrategyBuilder.noRetries(),
   runParallel: false,
 })
-
-export const eduSchedulerGroup = new CheckGroupV2('edu-scheduler-In2dyugM', {
-  name: 'EduScheduler',
-  locations: [
-    'eu-central-1',
-  ],
-  tags: [
-    'eduscheduler',
-  ],
-  alertChannels: [
-    raulEmailAlert,
-  ],
-  alertEscalationPolicy: standardEscalation,
-  retryStrategy: RetryStrategyBuilder.noRetries(),
-  runParallel: false,
-})
