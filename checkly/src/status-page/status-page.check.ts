@@ -12,8 +12,8 @@ import {
   shogunitoWebBrowserService,
   ciaoboxCronService,
   ciaoboxWebService,
-  eduSchedulerApiService,
-  eduSchedulerWebService,
+  strongCoreWebService,
+  strongCoreLoginService,
 } from './services'
 
 new StatusPage('uliber-co-system-status-BDS7AS4c', {
@@ -45,18 +45,18 @@ new StatusPage('uliber-co-system-status-BDS7AS4c', {
       ],
     },
     {
-      name: 'EduScheduler',
-      services: [
-        eduSchedulerApiService,
-        eduSchedulerWebService,
-      ],
-    },
-    {
       name: 'AIDRA',
       services: [
         aidraApiService,
         aidraStacService,
         aidraDashboardService,
+      ],
+    },
+    {
+      name: 'Strong Core',
+      services: [
+        strongCoreWebService,
+        strongCoreLoginService,
       ],
     },
   ],
