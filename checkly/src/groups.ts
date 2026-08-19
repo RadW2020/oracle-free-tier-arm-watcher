@@ -33,3 +33,19 @@ export const aidraGroup = new CheckGroupV2('aidra', {
   retryStrategy: RetryStrategyBuilder.noRetries(),
   runParallel: false,
 })
+
+export const strongCoreGroup = new CheckGroupV2('strong-core', {
+  name: 'Strong Core',
+  locations: [
+    'eu-central-1',
+  ],
+  tags: [
+    'strong-core',
+  ],
+  alertChannels: [
+    raulEmailAlert,
+  ],
+  alertEscalationPolicy: standardEscalation,
+  retryStrategy: RetryStrategyBuilder.noRetries(),
+  runParallel: false,
+})

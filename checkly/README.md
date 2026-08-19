@@ -21,11 +21,12 @@ checkly/
 ├── checkly.config.ts          Proyecto: logicalId, checkMatch, runLocation
 ├── src/
 │   ├── alert-channels.ts      Canal de email → raul@uliber.com
-│   ├── groups.ts              Grupos Shogunito y AIDRA
+│   ├── groups.ts              Grupos Shogunito, AIDRA y Strong Core
 │   ├── oci/                   3 checks del Free Tier de Oracle
 │   ├── shogunito/             4 API + 1 browser + 1 multistep (+ specs Playwright)
 │   ├── ciaobox/               1 API + 1 URL monitor + 1 heartbeat
 │   ├── aidra/                 2 API + 1 URL monitor
+│   ├── strong-core/           1 API + 2 URL monitors
 │   └── status-page/           Status page pública + sus 14 servicios
 └── SECURITY.md                Cómo tratar secretos en los checks
 ```
@@ -45,14 +46,14 @@ Las dos cosas se facturan distinto, y elegir mal sale caro:
   facturan **por unidad** (10 en el plan), no por ejecución. Su frecuencia
   es gratis.
 
-Presupuesto actual: **5.840 / 10.000 API runs al mes (58%)**, 61 / 1.000 browser
-runs. Las frecuencias están por tramos según lo que aporta sondear más a menudo,
+Presupuesto actual: **6.570 / 10.000 API runs al mes (66%)**, 61 / 1.000 browser
+runs y 5 / 10 uptime monitors. Las frecuencias están por tramos según lo que aporta sondear más a menudo,
 no todo al máximo:
 
 | Tramo | Checks | Por qué |
 |---|---|---|
-| 30 min | Shogunito API Health | De él dependen los demás checks de Shogunito |
-| 1 h | Shogunito Web UI, MinIO, AIDRA API Health, AIDRA Dashboard | Caída visible para un usuario |
+| 30 min | Shogunito API Health, Ciaobox Public Health, Strong Core Web | De Shogunito API Health dependen los demás checks de Shogunito; los otros dos son uptime monitors, así que su frecuencia es gratis |
+| 1 h | Shogunito Web UI, MinIO, AIDRA API Health, AIDRA Dashboard, Strong Core Historial y Auth Providers | Caída visible para un usuario |
 | 2–3 h | AIDRA STAC, bandwidth WARNING y CRITICAL, infra multistep, Oracle Free Tier Monitor | Cambian despacio; el multistep cuesta el doble por ejecución, y el Free Tier Monitor llama a la API de OCI a través del servicio Go |
 | 6 h | Shogunito API Swagger JSON | Documentación estática: sondearla más es gastar cuota |
 
@@ -90,7 +91,7 @@ sea infalible.
 `sendDegraded: true` en el canal: los checks declaran `degradedResponseTime`,
 pero con el canal en `false` ese umbral no generaba ningún aviso.
 
-La escalación vive en `src/escalation.ts` y la usan los 15 checks, los 2
+La escalación vive en `src/escalation.ts` y la usan los 18 checks, los 3
 grupos y el default de la config. Estaba duplicada literalmente en 8 ficheros
 y con `amount: 0`, o sea un único email por incidencia: si ese correo se
 perdía, la incidencia se perdía. Ahora avisa al primer fallo y recuerda 2
