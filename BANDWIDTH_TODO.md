@@ -1,6 +1,23 @@
 # TODO: Bandwidth Monitoring
 
-## ⚠️ Estado actual
+> **Estado real a 18/09/2026.** Este documento estaba desactualizado en sus dos
+> puntos principales y se corrige aquí en vez de dejarlo mintiendo:
+>
+> - **El watcher SÍ monitoriza egress.** `getBandwidthUsage` (`oci.go`) consulta
+>   `VnicToNetworkBytes` del namespace `oci_vcn` desde el día 1 del mes y publica
+>   `oci_bandwidth_egress_gb_used` / `_percentage`. Hay además dos checks de
+>   Checkly sobre el 50 % y el 70 %. Uso real: **8,5 GB/día**, ~255 GB/mes sobre
+>   los 10 TB — el egress no es hoy el riesgo.
+> - **El Budget Alert de 1 $ ya existe y está activo.** Budget `alerta`, 1 USD,
+>   reset mensual, sobre toda la tenancy. Dos reglas: `ACTUAL` al 1 % (avisa al
+>   primer céntimo gastado) y `forecast-antes-de-gastar` al 100 % de la
+>   proyección, añadida el 18/09/2026 para enterarse *antes* del cargo.
+>
+> Lo que sí faltaba no era medir el egress: era medir **saturación**. Ver
+> `POSTMORTEM-2026-09-17.md` y las métricas `oci_network_ingress_*` en
+> `GRAFANA_GUIDE.md`.
+
+## ⚠️ Estado original del documento (enero 2026)
 
 El watcher NO monitoriza bandwidth/egress automáticamente.
 
