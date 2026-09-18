@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -112,5 +113,26 @@ func TestObjectStorageWarnsAtEighty(t *testing.T) {
 	w := assessQuotas(usage).Warnings
 	if len(w) != 1 || !strings.Contains(w[0], "Object Storage at 80%") {
 		t.Errorf("a 80%% warnings = %v; want uno sobre Object Storage", w)
+	}
+}
+
+// TestStatusResponseAlwaysCarriesTheNumber: el check de Checkly asierta
+// $.maxUsagePercentage. Con `omitempty` el campo desaparecia al valer 0, que
+// es el valor normal desde que el estado solo mide cuota acumulativa.
+func TestStatusResponseAlwaysCarriesTheNumber(t *testing.T) {
+	body, err := json.Marshal(StatusResponse{Status: "OK", MaxUsagePercentage: 0, AllocationPercentage: 100})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := decoded["maxUsagePercentage"]; !ok {
+		t.Errorf("falta maxUsagePercentage en %s", body)
+	}
+	if _, ok := decoded["allocationPercentage"]; !ok {
+		t.Errorf("falta allocationPercentage en %s", body)
 	}
 }

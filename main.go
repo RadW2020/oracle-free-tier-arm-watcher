@@ -217,7 +217,14 @@ type StatusResponse struct {
 	Status string `json:"status"`
 	// MaxUsagePercentage es el maximo de la cuota que se llena sola, que es
 	// la que marca el estado (ver assessQuotas).
-	MaxUsagePercentage int `json:"maxUsagePercentage,omitempty"`
+	//
+	// SIN omitempty a proposito. Con el, un 0 desaparecia del JSON, y 0 es
+	// justo el valor normal desde que el estado mide solo cuota acumulativa:
+	// el check 'Oracle Free Tier Monitor' asierta $.maxUsagePercentage y
+	// empezo a fallar con "Expected JSON array to satisfy comparison" —el
+	// campo no existia— el 18/09/2026. Un campo que se evapora al valer cero
+	// es una trampa para cualquiera que lo consuma.
+	MaxUsagePercentage int `json:"maxUsagePercentage"`
 	// AllocationPercentage es el maximo de la cuota asignada por diseno.
 	// Estar al 100 % aqui es el objetivo de un Free Tier aprovechado, no una
 	// incidencia: se informa, no escala.
