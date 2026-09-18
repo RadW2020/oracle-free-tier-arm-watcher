@@ -6,7 +6,6 @@ new ApiCheck('web-health-check', {
   activated: true,
   group: shogunitoGroup,
   frequency: Frequency.EVERY_1H,
-  locations: ['eu-central-1', 'us-east-1'],
   request: {
     url: '{{WEB_URL}}',
     method: 'GET',

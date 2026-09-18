@@ -1,5 +1,6 @@
-import { Frequency, RetryStrategyBuilder, UrlAssertionBuilder, UrlMonitor } from 'checkly/constructs'
+import { Frequency, UrlAssertionBuilder, UrlMonitor } from 'checkly/constructs'
 import { aidraGroup } from '../groups'
+import { LOCATIONS } from '../retries'
 
 /**
  * Dashboard público de Grafana de AIDRA (el "Dashboard of the Month").
@@ -27,19 +28,12 @@ new UrlMonitor('aidra-grafana-dashboard', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
   tags: [
     'aidra',
   ],
   frequency: Frequency.EVERY_1H,
+  // Las localizaciones y la estrategia de reintento las fija el grupo
+  // (src/groups.ts -> src/retries.ts): declararlas aquí no tiene efecto.
   group: aidraGroup,
-  // Los uptime monitors no admiten estrategias de reintento con
-  // varios intentos en este plan: sólo un reintento único.
-  retryStrategy: RetryStrategyBuilder.singleRetry({
-    baseBackoffSeconds: 30,
-    sameRegion: true,
-  }),
   runParallel: false,
 })

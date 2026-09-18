@@ -1,5 +1,6 @@
 import { Frequency, RetryStrategyBuilder, UrlAssertionBuilder, UrlMonitor } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { LOCATIONS } from '../retries'
 import { standardEscalation } from '../escalation'
 
 /**
@@ -27,9 +28,7 @@ new UrlMonitor('ciaobox-public-health-C3s2O4ll', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
+  locations: LOCATIONS,
   tags: [
     'ciaobox',
   ],
@@ -42,7 +41,7 @@ new UrlMonitor('ciaobox-public-health-C3s2O4ll', {
   // varios intentos en este plan: sólo un reintento único.
   retryStrategy: RetryStrategyBuilder.singleRetry({
     baseBackoffSeconds: 30,
-    sameRegion: true,
+    sameRegion: false,
   }),
   runParallel: false,
 })

@@ -1,5 +1,6 @@
-import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
+import { ApiCheck, AssertionBuilder, Frequency } from 'checkly/constructs'
 import { strongCoreGroup } from '../groups'
+import { LOCATIONS } from '../retries'
 
 /**
  * Que se pueda entrar en Strong Core, no sólo que la web cargue.
@@ -45,19 +46,12 @@ new ApiCheck('strong-core-auth-providers', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
   tags: [
     'strong-core',
   ],
   frequency: Frequency.EVERY_1H,
+  // Las localizaciones y la estrategia de reintento las fija el grupo
+  // (src/groups.ts -> src/retries.ts): declararlas aquí no tiene efecto.
   group: strongCoreGroup,
-  retryStrategy: RetryStrategyBuilder.fixedStrategy({
-    baseBackoffSeconds: 30,
-    maxRetries: 2,
-    maxDurationSeconds: 600,
-    sameRegion: true,
-  }),
   runParallel: false,
 })

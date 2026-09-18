@@ -5,16 +5,12 @@ import * as path from 'path';
 new MultiStepCheck('shogunito-infra-check', {
   name: 'Shogunito Infrastructure (MultiStep)',
   activated: true,
+  // Las localizaciones y la estrategia de reintento las fija el grupo
+  // (src/groups.ts -> src/retries.ts): declararlas aquí no tiene efecto.
   group: shogunitoGroup,
   frequency: Frequency.EVERY_3H,
-  locations: ['eu-central-1', 'us-east-1'],
   runtimeId: '2025.04',
   code: {
     entrypoint: path.join(__dirname, 'infra.spec.ts'),
-  },
-  retryStrategy: {
-    type: 'LINEAR',
-    maxRetries: 2,
-    baseBackoffSeconds: 30,
   },
 });

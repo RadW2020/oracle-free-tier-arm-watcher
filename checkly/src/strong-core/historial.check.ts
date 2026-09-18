@@ -1,5 +1,6 @@
-import { Frequency, RetryStrategyBuilder, UrlAssertionBuilder, UrlMonitor } from 'checkly/constructs'
+import { Frequency, UrlAssertionBuilder, UrlMonitor } from 'checkly/constructs'
 import { strongCoreGroup } from '../groups'
+import { LOCATIONS } from '../retries'
 
 /**
  * Renderizado bajo demanda de Strong Core: la página de historial.
@@ -31,19 +32,12 @@ new UrlMonitor('strong-core-historial', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
   tags: [
     'strong-core',
   ],
   frequency: Frequency.EVERY_1H,
+  // Las localizaciones y la estrategia de reintento las fija el grupo
+  // (src/groups.ts -> src/retries.ts): declararlas aquí no tiene efecto.
   group: strongCoreGroup,
-  // Los uptime monitors no admiten estrategias de reintento con
-  // varios intentos en este plan: sólo un reintento único.
-  retryStrategy: RetryStrategyBuilder.singleRetry({
-    baseBackoffSeconds: 30,
-    sameRegion: true,
-  }),
   runParallel: false,
 })

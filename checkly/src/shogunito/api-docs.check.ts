@@ -6,7 +6,6 @@ new ApiCheck('api-docs-check', {
   activated: true,
   group: shogunitoGroup,
   frequency: Frequency.EVERY_6H,
-  locations: ['eu-central-1', 'us-east-1'],
   request: {
     url: '{{API_URL}}/api/v1/docs-json',
     method: 'GET',

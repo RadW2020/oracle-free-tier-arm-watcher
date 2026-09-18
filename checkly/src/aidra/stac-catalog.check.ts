@@ -1,5 +1,6 @@
 import { ApiCheck, AssertionBuilder, Frequency } from 'checkly/constructs'
 import { aidraGroup } from '../groups'
+import { LOCATIONS } from '../retries'
 
 /**
  * Catálogo STAC de AIDRA.
@@ -30,9 +31,6 @@ new ApiCheck('aidra-stac-catalog', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
   tags: [
     'aidra',
   ],

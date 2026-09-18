@@ -1,5 +1,6 @@
 import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { LOCATIONS } from '../retries'
 import { standardEscalation } from '../escalation'
 
 new ApiCheck('oci-bandwidth-critical-70-7-tb-NTGCJelN', {
@@ -25,9 +26,7 @@ new ApiCheck('oci-bandwidth-critical-70-7-tb-NTGCJelN', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
+  locations: LOCATIONS,
   frequency: Frequency.EVERY_3H,
   alertChannels: [
     raulEmailAlert,
@@ -37,7 +36,7 @@ new ApiCheck('oci-bandwidth-critical-70-7-tb-NTGCJelN', {
     baseBackoffSeconds: 30,
     maxRetries: 2,
     maxDurationSeconds: 600,
-    sameRegion: true,
+    sameRegion: false,
   }),
   runParallel: false,
 })

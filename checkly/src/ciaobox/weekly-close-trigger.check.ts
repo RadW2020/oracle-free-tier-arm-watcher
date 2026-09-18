@@ -1,5 +1,6 @@
 import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { LOCATIONS } from '../retries'
 import { standardEscalation } from '../escalation'
 
 new ApiCheck('ciaobox-weekly-close-trigger-ksR0Xopp', {
@@ -29,9 +30,7 @@ new ApiCheck('ciaobox-weekly-close-trigger-ksR0Xopp', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
+  locations: LOCATIONS,
   tags: [
     'ciaobox',
     'cron',
@@ -45,7 +44,7 @@ new ApiCheck('ciaobox-weekly-close-trigger-ksR0Xopp', {
     baseBackoffSeconds: 60,
     maxRetries: 3,
     maxDurationSeconds: 600,
-    sameRegion: true,
+    sameRegion: false,
   }),
   runParallel: false,
 })

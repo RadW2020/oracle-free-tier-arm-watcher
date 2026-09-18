@@ -1,6 +1,7 @@
 import { defineConfig } from 'checkly';
 import { raulEmailAlert } from './src/alert-channels';
 import { standardEscalation } from './src/escalation';
+import { crossRegionRetry } from './src/retries';
 
 /**
  * Configuration as code for the whole Checkly account (Uliber & Co).
@@ -40,6 +41,15 @@ export default defineConfig({
      * único email sin repetición.
      */
     alertEscalationPolicy: standardEscalation,
+    /**
+     * Tercera red de seguridad, hermana de las dos de arriba: un check que no
+     * declare reintentos ni herede los de su grupo se quedaba con un único
+     * intento, y entonces un paquete perdido por el camino —no un servicio
+     * caído— bastaba para mandar un correo. Con `sameRegion: false` el
+     * reintento sale de la otra localización, así que sólo alerta lo que
+     * falla desde las dos. Ver src/retries.ts.
+     */
+    retryStrategy: crossRegionRetry,
     /**
      * Only *.browser.spec.ts files are auto-converted into browser checks.
      * The Playwright specs under src/shogunito are referenced explicitly by

@@ -1,5 +1,6 @@
 import { ApiCheck, AssertionBuilder, Frequency, RetryStrategyBuilder } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
+import { LOCATIONS } from '../retries'
 import { standardEscalation } from '../escalation'
 
 new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
@@ -24,9 +25,7 @@ new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
   activated: true,
   muted: false,
   shouldFail: false,
-  locations: [
-    'eu-central-1',
-  ],
+  locations: LOCATIONS,
   // 3 h y no 1 h: este check pega al servicio Go, que a su vez llama a la
   // API de OCI. A 1 h eran 24 consultas diarias contra Oracle en vez de 8,
   // y no compensa arriesgar rate limits en la API que vigila la factura.
@@ -39,7 +38,7 @@ new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
     baseBackoffSeconds: 30,
     maxRetries: 2,
     maxDurationSeconds: 600,
-    sameRegion: true,
+    sameRegion: false,
   }),
   runParallel: false,
 })
