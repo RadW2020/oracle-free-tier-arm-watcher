@@ -156,7 +156,11 @@ var (
 	// General Status
 	overallStatus = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "oci_overall_status",
-		Help: "Overall status of OCI resources (0=OK, 1=ATTENTION, 2=WARNING, 3=CRITICAL)",
+		Help: "Status of the quota that fills up on its own: object storage, DB storage and egress (0=OK, 1=ATTENTION, 2=WARNING, 3=CRITICAL)",
+	})
+	allocationPercentage = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_allocation_percentage",
+		Help: "Highest percentage among the quotas allocated by design (OCPUs, RAM, block storage, IPs, DBs): 100% is the goal of a well-used Free Tier, not an incident",
 	})
 
 	lastUpdateTimestamp = promauto.NewGauge(prometheus.GaugeOpts{
@@ -216,32 +220,23 @@ func updateMetrics(usage *AllUsage) {
 	networkIngressDropsHour.Set(usage.Saturation.IngressDropsLastHour)
 	saturationSampleAge.Set(float64(usage.Saturation.SampleAgeSeconds))
 
-	// Calcular status numérico
-	maxPercent := 0
-	percentages := []int{
-		usage.Compute.ARM.OCPUs.Percentage,
-		usage.Compute.ARM.MemoryGB.Percentage,
-		usage.Compute.AMD.Instances.Percentage,
-		usage.BlockStorage.Total.Percentage,
-		usage.ObjectStorage.Total.Percentage,
-		usage.PublicIPs.Percentage,
-		usage.Database.AutonomousDBs.Percentage,
-		usage.Database.StorageUsage.Percentage,
-		usage.Bandwidth.Percentage,
-	}
-	for _, p := range percentages {
-		if p > maxPercent {
-			maxPercent = p
-		}
-	}
+	// Estado: lo marca la cuota que se llena sola, no la asignada por
+	// diseno. Esta maquina tiene las 4 OCPUs, los 24 GB y los 200 GB de
+	// disco al 100 % a proposito, y con el criterio anterior el gauge
+	// llevaba meses clavado en CRITICAL: un semaforo siempre en rojo que
+	// nadie mira. La logica vive en assessQuotas (main.go) para que /usage,
+	// /status y las metricas no puedan discrepar.
+	assessment := assessQuotas(usage)
+	allocationPercentage.Set(float64(assessment.AllocationPercentage))
 
 	statusValue := 0.0
-	if maxPercent >= 90 {
-		statusValue = 3.0 // CRITICAL
-	} else if maxPercent >= 80 {
-		statusValue = 2.0 // WARNING
-	} else if maxPercent >= 60 {
-		statusValue = 1.0 // ATTENTION
+	switch assessment.Status {
+	case "CRITICAL":
+		statusValue = 3.0
+	case "WARNING":
+		statusValue = 2.0
+	case "ATTENTION":
+		statusValue = 1.0
 	}
 	overallStatus.Set(statusValue)
 

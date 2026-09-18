@@ -88,6 +88,7 @@ Una vez que los datos lleguen a Grafana Cloud, puedes crear un Dashboard usando 
 - `oci_database_storage_gb_used` / `limit` (Almacenamiento DB)
 - `oci_public_ips_used` / `limit`
 - `oci_overall_status` (0=OK, 1=ATTENTION, 2=WARNING, 3=CRITICAL)
+- `oci_allocation_percentage` (informativo: 100 % es el objetivo, no una alarma)
 
 ## Métricas Disponibles
 
@@ -103,10 +104,27 @@ Una vez que los datos lleguen a Grafana Cloud, puedes crear un Dashboard usando 
 | `oci_database_autonomous_used`      | Bases de datos Autonomous en uso            |
 | `oci_database_storage_gb_used`      | Almacenamiento de bases de datos (GB)       |
 | `oci_public_ips_used`               | IPs públicas reservadas                     |
-| `oci_overall_status`                | Estado general de CUOTA (0-3)               |
+| `oci_overall_status`                | Estado de la cuota que se llena sola (0-3)  |
+| `oci_allocation_percentage`         | Máximo de la cuota asignada por diseño (%)  |
 | `oci_watcher_last_update_timestamp` | Fecha última sincronización (Unix)          |
 
 ---
+
+## Dos familias de cuota
+
+`oci_overall_status` **sólo mide la cuota que se llena sola**: object storage,
+almacenamiento de base de datos y egress. Son las que, si llegan al tope,
+traen factura.
+
+Las que están asignadas por diseño —OCPUs, RAM, block storage, IPs
+reservadas, Autonomous DBs— se publican aparte en
+`oci_allocation_percentage` y **no escalan el estado**. Esta cuenta las tiene
+al 100 % a propósito: 4 de 4 OCPUs ARM, 24 de 24 GB, 200 de 200 GB de disco.
+Con el criterio anterior el gauge llevaba meses clavado en CRITICAL, que es un
+semáforo siempre en rojo: nadie lo mira, y cuando pasa algo de verdad tampoco.
+
+Si quieres enterarte de un cambio ahí (alguien libera o consume OCPUs), la
+alerta correcta no es un umbral sino una variación: `changes(oci_compute_arm_ocpus_used[1h]) > 0`.
 
 ## Métricas de saturación (no son cuota)
 

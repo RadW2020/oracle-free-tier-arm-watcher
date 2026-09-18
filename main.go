@@ -46,7 +46,7 @@ type FreeTierLimits struct {
 		TotalStorageGB int `json:"totalStorageGB"`
 	} `json:"database"`
 	LoadBalancer struct {
-		Instances    int `json:"instances"`
+		Instances     int `json:"instances"`
 		BandwidthMbps int `json:"bandwidthMbps"`
 	} `json:"loadBalancer"`
 }
@@ -193,15 +193,17 @@ type AllUsage struct {
 
 // UsageResponse es la respuesta del endpoint /usage
 type UsageResponse struct {
-	Status             string         `json:"status"`
-	MaxUsagePercentage int            `json:"maxUsagePercentage"`
-	Warnings           []string       `json:"warnings"`
-	Timestamp          string         `json:"timestamp"`
-	Configured         bool           `json:"configured"`
-	Usage              *AllUsage      `json:"usage,omitempty"`
-	FreeTierLimits     FreeTierLimits `json:"freeTierLimits"`
-	Error              string         `json:"error,omitempty"`
-	Message            string         `json:"message,omitempty"`
+	Status string `json:"status"`
+	// Ver StatusResponse: maximo de la cuota acumulativa, no de toda.
+	MaxUsagePercentage   int            `json:"maxUsagePercentage"`
+	AllocationPercentage int            `json:"allocationPercentage"`
+	Warnings             []string       `json:"warnings"`
+	Timestamp            string         `json:"timestamp"`
+	Configured           bool           `json:"configured"`
+	Usage                *AllUsage      `json:"usage,omitempty"`
+	FreeTierLimits       FreeTierLimits `json:"freeTierLimits"`
+	Error                string         `json:"error,omitempty"`
+	Message              string         `json:"message,omitempty"`
 }
 
 // HealthResponse es la respuesta del endpoint /health
@@ -212,11 +214,17 @@ type HealthResponse struct {
 
 // StatusResponse es la respuesta del endpoint /status
 type StatusResponse struct {
-	Status             string   `json:"status"`
-	MaxUsagePercentage int      `json:"maxUsagePercentage,omitempty"`
-	Warnings           []string `json:"warnings,omitempty"`
-	Timestamp          string   `json:"timestamp"`
-	Message            string   `json:"message,omitempty"`
+	Status string `json:"status"`
+	// MaxUsagePercentage es el maximo de la cuota que se llena sola, que es
+	// la que marca el estado (ver assessQuotas).
+	MaxUsagePercentage int `json:"maxUsagePercentage,omitempty"`
+	// AllocationPercentage es el maximo de la cuota asignada por diseno.
+	// Estar al 100 % aqui es el objetivo de un Free Tier aprovechado, no una
+	// incidencia: se informa, no escala.
+	AllocationPercentage int      `json:"allocationPercentage"`
+	Warnings             []string `json:"warnings,omitempty"`
+	Timestamp            string   `json:"timestamp"`
+	Message              string   `json:"message,omitempty"`
 }
 
 // LimitsResponse es la respuesta del endpoint /limits
@@ -291,6 +299,90 @@ func limitsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // usageHandler maneja GET /usage
+// QuotaAssessment separa las dos familias de cuota del Free Tier.
+//
+// Hay cuotas que estan al 100 % porque alguien decidio usarlas enteras: las
+// 4 OCPUs ARM, los 24 GB de RAM, los 200 GB de disco. Un Free Tier bien
+// aprovechado vive exactamente ahi, y un status que grita CRITICAL por eso
+// es un semaforo siempre en rojo: nadie lo mira, y cuando de verdad pasa
+// algo tampoco lo mira. Esta maquina llevaba meses en CRITICAL.
+//
+// Y hay cuotas que suben solas con el uso —object storage, almacenamiento de
+// base de datos y egress— donde llegar al tope si tiene consecuencia: una
+// factura. Esas son las que merecen escalar el estado.
+//
+// La distincion no borra informacion: los porcentajes de asignacion siguen
+// publicandose (AllocationPercentage y las metricas por recurso), asi que
+// una alerta sobre "las OCPUs cambiaron" sigue siendo posible. Lo que deja
+// de hacer es confundir "esta lleno porque asi lo quisiste" con "se esta
+// llenando solo".
+type QuotaAssessment struct {
+	// AccruingPercentage es el maximo de las cuotas que se llenan solas.
+	AccruingPercentage int
+	// AllocationPercentage es el maximo de las cuotas asignadas por diseno.
+	AllocationPercentage int
+	Status               string
+	Warnings             []string
+}
+
+// assessQuotas clasifica el uso y decide el estado general.
+func assessQuotas(usage *AllUsage) QuotaAssessment {
+	assessment := QuotaAssessment{Warnings: []string{}}
+
+	// --- Cuota que se llena sola: escala el estado ---
+	accruing := []struct {
+		name       string
+		percentage int
+		threshold  int
+		detail     string
+	}{
+		{"Object Storage", usage.ObjectStorage.Total.Percentage, 80, ""},
+		{"DB Storage", usage.Database.StorageUsage.Percentage, 80, ""},
+		// Bandwidth avisa antes que el resto: 10 TB se van muy deprisa si
+		// algo se desmadra, y a 80 % ya no da tiempo a reaccionar.
+		{"Bandwidth", usage.Bandwidth.Percentage, 50, fmt.Sprintf(" (%.1f GB / %d TB)", usage.Bandwidth.EgressGB, usage.Bandwidth.LimitTB)},
+	}
+
+	for _, q := range accruing {
+		if q.percentage <= 0 {
+			continue
+		}
+		if q.percentage > assessment.AccruingPercentage {
+			assessment.AccruingPercentage = q.percentage
+		}
+		if q.percentage >= q.threshold {
+			assessment.Warnings = append(assessment.Warnings,
+				fmt.Sprintf("%s at %d%%%s", q.name, q.percentage, q.detail))
+		}
+	}
+
+	// --- Cuota asignada por diseno: se informa, no escala ---
+	allocated := []int{
+		usage.Compute.ARM.OCPUs.Percentage,
+		usage.Compute.ARM.MemoryGB.Percentage,
+		usage.Compute.AMD.Instances.Percentage,
+		usage.BlockStorage.Total.Percentage,
+		usage.PublicIPs.Percentage,
+		usage.Database.AutonomousDBs.Percentage,
+	}
+	for _, p := range allocated {
+		if p > assessment.AllocationPercentage {
+			assessment.AllocationPercentage = p
+		}
+	}
+
+	assessment.Status = "OK"
+	if assessment.AccruingPercentage >= 90 {
+		assessment.Status = "CRITICAL"
+	} else if assessment.AccruingPercentage >= 80 {
+		assessment.Status = "WARNING"
+	} else if assessment.AccruingPercentage >= 60 {
+		assessment.Status = "ATTENTION"
+	}
+
+	return assessment
+}
+
 func usageHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -322,66 +414,10 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calcular estado general
-	percentages := []int{}
-	warnings := []string{}
+	assessment := assessQuotas(usage)
+	warnings := assessment.Warnings
 
-	if usage.Compute.ARM.OCPUs.Percentage > 0 {
-		percentages = append(percentages, usage.Compute.ARM.OCPUs.Percentage)
-		if usage.Compute.ARM.OCPUs.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("ARM OCPUs at %d%%", usage.Compute.ARM.OCPUs.Percentage))
-		}
-	}
-	if usage.Compute.ARM.MemoryGB.Percentage > 0 {
-		percentages = append(percentages, usage.Compute.ARM.MemoryGB.Percentage)
-		if usage.Compute.ARM.MemoryGB.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("ARM Memory at %d%%", usage.Compute.ARM.MemoryGB.Percentage))
-		}
-	}
-	if usage.BlockStorage.Total.Percentage > 0 {
-		percentages = append(percentages, usage.BlockStorage.Total.Percentage)
-		if usage.BlockStorage.Total.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("Block Storage at %d%%", usage.BlockStorage.Total.Percentage))
-		}
-	}
-	if usage.PublicIPs.Percentage > 0 {
-		percentages = append(percentages, usage.PublicIPs.Percentage)
-		if usage.PublicIPs.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("Public IPs at %d%%", usage.PublicIPs.Percentage))
-		}
-	}
-	if usage.ObjectStorage.Total.Percentage > 0 {
-		percentages = append(percentages, usage.ObjectStorage.Total.Percentage)
-		if usage.ObjectStorage.Total.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("Object Storage at %d%%", usage.ObjectStorage.Total.Percentage))
-		}
-	}
-	if usage.Compute.AMD.Instances.Percentage > 0 {
-		percentages = append(percentages, usage.Compute.AMD.Instances.Percentage)
-		if usage.Compute.AMD.Instances.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("AMD Instances at %d%%", usage.Compute.AMD.Instances.Percentage))
-		}
-	}
-	if usage.Database.AutonomousDBs.Percentage > 0 {
-		percentages = append(percentages, usage.Database.AutonomousDBs.Percentage)
-		if usage.Database.AutonomousDBs.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("Autonomous DBs at %d%%", usage.Database.AutonomousDBs.Percentage))
-		}
-	}
-	if usage.Database.StorageUsage.Percentage > 0 {
-		percentages = append(percentages, usage.Database.StorageUsage.Percentage)
-		if usage.Database.StorageUsage.Percentage >= 80 {
-			warnings = append(warnings, fmt.Sprintf("DB Storage at %d%%", usage.Database.StorageUsage.Percentage))
-		}
-	}
-	if usage.Bandwidth.Percentage > 0 {
-		percentages = append(percentages, usage.Bandwidth.Percentage)
-		if usage.Bandwidth.Percentage >= 50 {
-			warnings = append(warnings, fmt.Sprintf("Bandwidth at %d%% (%.1f GB / %d TB)", usage.Bandwidth.Percentage, usage.Bandwidth.EgressGB, usage.Bandwidth.LimitTB))
-		}
-	}
-
-	// Saturacion: avisa, pero no toca el status ni maxUsagePercentage.
+	// Saturacion: avisa, pero no toca el status ni los porcentajes.
 	//
 	// Un paquete descartado por el shaper de OCI no acerca la factura ni un
 	// centimo, asi que subir el status por esto haria saltar los checks de
@@ -393,30 +429,15 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 			usage.Saturation.IngressDropsLastHour))
 	}
 
-	maxPercentage := 0
-	for _, p := range percentages {
-		if p > maxPercentage {
-			maxPercentage = p
-		}
-	}
-
-	status := "OK"
-	if maxPercentage >= 90 {
-		status = "CRITICAL"
-	} else if maxPercentage >= 80 {
-		status = "WARNING"
-	} else if maxPercentage >= 60 {
-		status = "ATTENTION"
-	}
-
 	writeJSON(w, http.StatusOK, UsageResponse{
-		Status:             status,
-		MaxUsagePercentage: maxPercentage,
-		Warnings:           warnings,
-		Timestamp:          time.Now().UTC().Format(time.RFC3339),
-		Configured:         true,
-		Usage:              usage,
-		FreeTierLimits:     Limits,
+		Status:               assessment.Status,
+		MaxUsagePercentage:   assessment.AccruingPercentage,
+		AllocationPercentage: assessment.AllocationPercentage,
+		Warnings:             warnings,
+		Timestamp:            time.Now().UTC().Format(time.RFC3339),
+		Configured:           true,
+		Usage:                usage,
+		FreeTierLimits:       Limits,
 	})
 }
 
@@ -446,44 +467,16 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calcular estado
-	percentages := []int{
-		usage.Compute.ARM.OCPUs.Percentage,
-		usage.Compute.ARM.MemoryGB.Percentage,
-		usage.Compute.AMD.Instances.Percentage,
-		usage.BlockStorage.Total.Percentage,
-		usage.ObjectStorage.Total.Percentage,
-		usage.PublicIPs.Percentage,
-		usage.Database.AutonomousDBs.Percentage,
-		usage.Database.StorageUsage.Percentage,
-		usage.Bandwidth.Percentage,
-	}
-
-	maxPercentage := 0
-	warnings := []string{}
-	for _, p := range percentages {
-		if p > maxPercentage {
-			maxPercentage = p
-		}
-		if p >= 80 {
-			warnings = append(warnings, fmt.Sprintf("Resource at %d%%", p))
-		}
-	}
-
-	status := "OK"
-	if maxPercentage >= 90 {
-		status = "CRITICAL"
-	} else if maxPercentage >= 80 {
-		status = "WARNING"
-	} else if maxPercentage >= 60 {
-		status = "ATTENTION"
-	}
+	// Mismo criterio que /usage: el estado lo marca la cuota que se llena
+	// sola, no la que esta asignada por diseno (ver assessQuotas).
+	assessment := assessQuotas(usage)
 
 	writeJSON(w, http.StatusOK, StatusResponse{
-		Status:             status,
-		MaxUsagePercentage: maxPercentage,
-		Warnings:           warnings,
-		Timestamp:          time.Now().UTC().Format(time.RFC3339),
+		Status:               assessment.Status,
+		MaxUsagePercentage:   assessment.AccruingPercentage,
+		AllocationPercentage: assessment.AllocationPercentage,
+		Warnings:             assessment.Warnings,
+		Timestamp:            time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
@@ -497,7 +490,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		apiKey := os.Getenv("API_KEY")
-		
+
 		// Si no hay API_KEY configurada, permitir acceso (desarrollo)
 		if apiKey == "" {
 			logger.Warn().Msg("API_KEY not set - endpoints are unprotected")
@@ -623,7 +616,7 @@ func main() {
 		Str("port", port).
 		Bool("auth_enabled", apiKey != "").
 		Msg("🔍 Oracle Free Tier Watcher started")
-	
+
 	fmt.Printf("📊 Usage endpoint: http://localhost:%s/usage\n", port)
 	fmt.Printf("💚 Health check: http://localhost:%s/health\n", port)
 	fmt.Printf("📋 Limits info: http://localhost:%s/limits\n", port)
