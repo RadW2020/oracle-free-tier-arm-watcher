@@ -122,6 +122,37 @@ var (
 		Help: "Percentage of monthly egress bandwidth used",
 	})
 
+	// Saturation Metrics
+	//
+	// Ninguna de estas consume cuota del Free Tier y por eso no entran en
+	// oci_overall_status: ese gauge sigue significando "cuanto te queda antes
+	// de pagar". Estas responden a la otra pregunta, la que el 17/09/2026 se
+	// quedo sin respuesta durante dos horas: "por que va todo lento".
+	instanceCPUPercentage = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_instance_cpu_percentage",
+		Help: "CPU utilization of the instance (%), from OCI Monitoring",
+	})
+	networkIngressRate = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_network_ingress_mb_per_min",
+		Help: "Real inbound traffic on the instance VNIC (MB/min), excludes Docker interfaces",
+	})
+	networkEgressRate = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_network_egress_mb_per_min",
+		Help: "Real outbound traffic on the instance VNIC (MB/min), excludes Docker interfaces",
+	})
+	networkIngressDropsRate = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_network_ingress_throttle_drops_per_min",
+		Help: "Inbound packets dropped by the OCI VNIC shaper in the last measured minute",
+	})
+	networkIngressDropsHour = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_network_ingress_throttle_drops_1h",
+		Help: "Inbound packets dropped by the OCI VNIC shaper over the last hour (>0 means other services are losing SYNs)",
+	})
+	saturationSampleAge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_saturation_sample_age_seconds",
+		Help: "Age of the newest saturation datapoint: OCI Monitoring publishes with a few minutes of lag",
+	})
+
 	// General Status
 	overallStatus = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "oci_overall_status",
@@ -176,6 +207,14 @@ func updateMetrics(usage *AllUsage) {
 	bandwidthEgressUsed.Set(usage.Bandwidth.EgressGB)
 	bandwidthEgressLimit.Set(float64(usage.Bandwidth.LimitTB))
 	bandwidthPercentage.Set(float64(usage.Bandwidth.Percentage))
+
+	// Saturación (no entra en el status: ver comentario en la declaración)
+	instanceCPUPercentage.Set(usage.Saturation.CPUPercentage)
+	networkIngressRate.Set(usage.Saturation.IngressMBPerMin)
+	networkEgressRate.Set(usage.Saturation.EgressMBPerMin)
+	networkIngressDropsRate.Set(usage.Saturation.IngressDropsPerMin)
+	networkIngressDropsHour.Set(usage.Saturation.IngressDropsLastHour)
+	saturationSampleAge.Set(float64(usage.Saturation.SampleAgeSeconds))
 
 	// Calcular status numérico
 	maxPercent := 0

@@ -156,6 +156,29 @@ type BandwidthUsage struct {
 	Error      string  `json:"error,omitempty"`
 }
 
+// SaturationUsage recoge senales de saturacion del host.
+//
+// Ninguna de estas metricas consume cuota del Free Tier —el trafico de
+// entrada ni siquiera se factura—, y por eso NO entran en el calculo de
+// status ni en maxUsagePercentage: estan aqui porque son las que explican
+// una caida, no las que anuncian una factura.
+//
+// El incidente del 17/09/2026 se vio exactamente asi: 379 MB/min de entrada
+// sostenidos y ~81.000 paquetes descartados por el shaper de OCI en seis
+// minutos, mientras todas las cuotas seguian en verde y el watcher informaba
+// OK con toda la razon. Ver POSTMORTEM-2026-09-17.md.
+type SaturationUsage struct {
+	CPUPercentage        float64 `json:"cpuPercentage"`
+	IngressMBPerMin      float64 `json:"ingressMBPerMin"`
+	EgressMBPerMin       float64 `json:"egressMBPerMin"`
+	IngressDropsPerMin   float64 `json:"ingressThrottleDropsPerMin"`
+	IngressDropsLastHour float64 `json:"ingressThrottleDropsLastHour"`
+	// Antiguedad del ultimo dato disponible: la API de Monitoring publica
+	// con unos minutos de retraso, asi que un valor de 0 seria mentira.
+	SampleAgeSeconds int    `json:"sampleAgeSeconds"`
+	Error            string `json:"error,omitempty"`
+}
+
 // AllUsage contiene todo el uso
 type AllUsage struct {
 	Compute       ComputeUsage       `json:"compute"`
@@ -165,6 +188,7 @@ type AllUsage struct {
 	LoadBalancer  LoadBalancerUsage  `json:"loadBalancer"`
 	Database      DatabaseUsage      `json:"database"`
 	Bandwidth     BandwidthUsage     `json:"bandwidth"`
+	Saturation    SaturationUsage    `json:"saturation"`
 }
 
 // UsageResponse es la respuesta del endpoint /usage
@@ -355,6 +379,18 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 		if usage.Bandwidth.Percentage >= 50 {
 			warnings = append(warnings, fmt.Sprintf("Bandwidth at %d%% (%.1f GB / %d TB)", usage.Bandwidth.Percentage, usage.Bandwidth.EgressGB, usage.Bandwidth.LimitTB))
 		}
+	}
+
+	// Saturacion: avisa, pero no toca el status ni maxUsagePercentage.
+	//
+	// Un paquete descartado por el shaper de OCI no acerca la factura ni un
+	// centimo, asi que subir el status por esto haria saltar los checks de
+	// cuota por algo que no lo es. Aparece como warning porque es lo unico
+	// que distingue "todo va lento" de "no pasa nada".
+	if usage.Saturation.IngressDropsLastHour > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"OCI dropped %.0f inbound packets in the last hour (VNIC ingress throttle): other services on this host are losing SYNs",
+			usage.Saturation.IngressDropsLastHour))
 	}
 
 	maxPercentage := 0

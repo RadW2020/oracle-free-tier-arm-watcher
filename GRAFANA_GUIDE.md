@@ -103,9 +103,37 @@ Una vez que los datos lleguen a Grafana Cloud, puedes crear un Dashboard usando 
 | `oci_database_autonomous_used`      | Bases de datos Autonomous en uso            |
 | `oci_database_storage_gb_used`      | Almacenamiento de bases de datos (GB)       |
 | `oci_public_ips_used`               | IPs públicas reservadas                     |
-| `oci_overall_status`                | Estado general (0-3)                        |
+| `oci_overall_status`                | Estado general de CUOTA (0-3)               |
 | `oci_watcher_last_update_timestamp` | Fecha última sincronización (Unix)          |
 
 ---
 
-_Tip: Puedes configurar alertas en Grafana Cloud para que te avisen por Discord/Telegram si `oci_overall_status > 1`._
+## Métricas de saturación (no son cuota)
+
+Las de arriba responden a «¿cuánto me queda antes de pagar?». Estas responden
+a la otra pregunta, la que el 17/09/2026 se quedó sin respuesta durante dos
+horas mientras todas las cuotas seguían en verde: **«¿por qué va todo lento?»**
+(ver `POSTMORTEM-2026-09-17.md`).
+
+| Métrica                                      | Descripción                                                    |
+| -------------------------------------------- | -------------------------------------------------------------- |
+| `oci_instance_cpu_percentage`                | CPU de la instancia (%)                                        |
+| `oci_network_ingress_mb_per_min`             | Tráfico de ENTRADA real de la VNIC (MB/min)                    |
+| `oci_network_egress_mb_per_min`              | Tráfico de SALIDA real de la VNIC (MB/min)                     |
+| `oci_network_ingress_throttle_drops_per_min` | Paquetes de entrada descartados por el shaper de OCI           |
+| `oci_network_ingress_throttle_drops_1h`      | Los mismos descartes, acumulados en la última hora             |
+| `oci_saturation_sample_age_seconds`          | Antigüedad del dato (Monitoring publica con minutos de retraso) |
+
+Dos avisos de lectura:
+
+- **Los descartes son la señal que importa.** `..._drops_1h > 0` significa que
+  OCI está tirando paquetes de entrada porque la descarga en curso satura el
+  caudal de la VNIC. El shaper no distingue flujos: también tira los SYN de
+  cualquier otro servicio de la máquina, que es como una descarga acaba
+  provocando `i/o timeout` en un sitio que no tiene nada que ver.
+- **Estas métricas salen de `oci_vcn`, no de `oci_computeagent`.** Las
+  `NetworksBytesIn/Out` del agente suman todas las interfaces, incluidas las de
+  Docker: en esta máquina marcan ~50 GB/día de salida cuando lo que sale de
+  verdad a internet son 8,5 GB/día.
+
+_Tip: Puedes configurar alertas en Grafana Cloud para que te avisen por Discord/Telegram si `oci_overall_status > 1` o si `oci_network_ingress_throttle_drops_1h > 0`._

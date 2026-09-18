@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -75,10 +76,11 @@ func getOCIUsage() (*AllUsage, error) {
 		publicIPUsage      UsageMetric
 		databaseUsage      DatabaseUsage
 		bandwidthUsage     BandwidthUsage
+		saturationUsage    SaturationUsage
 	)
 
-	// Canal para sincronización (esperamos 7 goroutines)
-	done := make(chan bool, 7)
+	// Canal para sincronización (esperamos 8 goroutines)
+	done := make(chan bool, 8)
 
 	// Lanzar todas las consultas en paralelo
 	go func() {
@@ -116,8 +118,13 @@ func getOCIUsage() (*AllUsage, error) {
 		done <- true
 	}()
 
+	go func() {
+		saturationUsage = getSaturationUsage(provider, compartmentID)
+		done <- true
+	}()
+
 	// Esperar a que todas las goroutines terminen
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 8; i++ {
 		<-done
 	}
 
@@ -129,6 +136,7 @@ func getOCIUsage() (*AllUsage, error) {
 		LoadBalancer:  loadBalancerUsage,
 		Database:      databaseUsage,
 		Bandwidth:     bandwidthUsage,
+		Saturation:    saturationUsage,
 	}, nil
 }
 
@@ -494,3 +502,131 @@ func getBandwidthUsage(provider common.ConfigurationProvider, compartmentID stri
 	return usage
 }
 
+// ---------------------------------------------------------------------------
+// Señales de saturación (no son cuota)
+// ---------------------------------------------------------------------------
+
+// queryMonitoringSeries ejecuta una query MQL y devuelve todos los datapoints
+// de la primera serie, ordenados de más antiguo a más reciente.
+//
+// La API de Monitoring etiqueta cada bucket con el FINAL de su intervalo: en
+// una serie [1m], el punto de las 15:15 contiene 15:14:00-15:15:00.
+func queryMonitoringSeries(
+	client monitoring.MonitoringClient,
+	compartmentID, namespace, query string,
+	window time.Duration,
+) ([]monitoring.AggregatedDatapoint, error) {
+	now := time.Now().UTC()
+
+	request := monitoring.SummarizeMetricsDataRequest{
+		CompartmentId: common.String(compartmentID),
+		SummarizeMetricsDataDetails: monitoring.SummarizeMetricsDataDetails{
+			Namespace: common.String(namespace),
+			Query:     common.String(query),
+			StartTime: &common.SDKTime{Time: now.Add(-window)},
+			EndTime:   &common.SDKTime{Time: now},
+		},
+	}
+
+	response, err := client.SummarizeMetricsData(context.Background(), request)
+	if err != nil {
+		return nil, err
+	}
+	if len(response.Items) == 0 {
+		return nil, nil
+	}
+
+	points := response.Items[0].AggregatedDatapoints
+	sort.Slice(points, func(i, j int) bool {
+		return points[i].Timestamp.Time.Before(points[j].Timestamp.Time)
+	})
+	return points, nil
+}
+
+// latestDatapoint devuelve el valor y la antigüedad del punto más reciente.
+//
+// Hace falta la antigüedad porque Monitoring publica con unos minutos de
+// retraso: dar el valor sin decir de cuándo es invita a leer un pico viejo
+// como si estuviera pasando ahora.
+func latestDatapoint(points []monitoring.AggregatedDatapoint) (value float64, age time.Duration, ok bool) {
+	for i := len(points) - 1; i >= 0; i-- {
+		if points[i].Value == nil {
+			continue
+		}
+		return *points[i].Value, time.Since(points[i].Timestamp.Time), true
+	}
+	return 0, 0, false
+}
+
+// sumDatapoints suma todos los puntos de la serie.
+func sumDatapoints(points []monitoring.AggregatedDatapoint) float64 {
+	var total float64
+	for _, p := range points {
+		if p.Value != nil {
+			total += *p.Value
+		}
+	}
+	return total
+}
+
+// getSaturationUsage obtiene las señales que explican una degradación del
+// host: CPU, tráfico real de la VNIC y paquetes descartados por el shaper
+// de OCI.
+//
+// Por qué la VNIC y no oci_computeagent para el tráfico: NetworksBytesIn/Out
+// del agente suman TODAS las interfaces, incluidas las de Docker, así que en
+// esta máquina marcan ~50 GB/día de salida cuando lo que sale de verdad a
+// internet son 8,5 GB/día. Para tráfico real, oci_vcn.
+func getSaturationUsage(provider common.ConfigurationProvider, compartmentID string) SaturationUsage {
+	usage := SaturationUsage{}
+
+	client, err := monitoring.NewMonitoringClientWithConfigurationProvider(provider)
+	if err != nil {
+		usage.Error = err.Error()
+		return usage
+	}
+
+	// Ventana corta para los valores instantáneos: suficiente para cubrir el
+	// retraso de publicación de Monitoring sin traerse media hora de puntos.
+	const shortWindow = 20 * time.Minute
+	maxAge := time.Duration(0)
+
+	if points, err := queryMonitoringSeries(client, compartmentID, "oci_computeagent", "CpuUtilization[1m].mean()", shortWindow); err != nil {
+		usage.Error = err.Error()
+	} else if value, age, ok := latestDatapoint(points); ok {
+		usage.CPUPercentage = value
+		if age > maxAge {
+			maxAge = age
+		}
+	}
+
+	if points, err := queryMonitoringSeries(client, compartmentID, "oci_vcn", "VnicFromNetworkBytes[1m].sum()", shortWindow); err != nil {
+		usage.Error = err.Error()
+	} else if value, age, ok := latestDatapoint(points); ok {
+		usage.IngressMBPerMin = value / (1024 * 1024)
+		if age > maxAge {
+			maxAge = age
+		}
+	}
+
+	if points, err := queryMonitoringSeries(client, compartmentID, "oci_vcn", "VnicToNetworkBytes[1m].sum()", shortWindow); err != nil {
+		usage.Error = err.Error()
+	} else if value, _, ok := latestDatapoint(points); ok {
+		usage.EgressMBPerMin = value / (1024 * 1024)
+	}
+
+	// Los descartes se piden a una hora y no al minuto: son ráfagas cortas
+	// (el 17/09 duraron seis minutos) y el worker sólo refresca cada 15 min,
+	// así que preguntar sólo por el último minuto los perdería casi siempre.
+	if points, err := queryMonitoringSeries(client, compartmentID, "oci_vcn", "VnicIngressDropsThrottle[1m].sum()", time.Hour); err != nil {
+		usage.Error = err.Error()
+	} else {
+		usage.IngressDropsLastHour = sumDatapoints(points)
+		if value, _, ok := latestDatapoint(points); ok {
+			usage.IngressDropsPerMin = value
+		}
+	}
+
+	usage.SampleAgeSeconds = int(maxAge.Seconds())
+	return usage
+}
