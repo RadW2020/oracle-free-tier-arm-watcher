@@ -102,12 +102,19 @@ curl -H "X-API-Key: tu-clave" https://tu-app.com/usage | jq
 
 ### Estados
 
-| Status    | %      | Acción          |
-| --------- | ------ | --------------- |
-| OK        | <60%   | ✅ Todo bien    |
-| ATTENTION | 60-80% | ⚠️ Revisar      |
-| WARNING   | 80-90% | 🟡 Precaución   |
-| CRITICAL  | >90%   | 🔴 Límite cerca |
+El estado sólo mide la **cuota que se llena sola** (object storage,
+almacenamiento de DB y egress mensual). Tener las OCPUs, la RAM y el disco al
+100 % es el objetivo de un Free Tier bien aprovechado y no cambia el estado.
+
+| Status    | Cuota acumulativa | Acción          |
+| --------- | ----------------- | --------------- |
+| OK        | <60%              | ✅ Todo bien    |
+| ATTENTION | 60-80%            | ⚠️ Revisar      |
+| WARNING   | 80-90%            | 🟡 Precaución   |
+| CRITICAL  | >90%              | 🔴 Límite cerca |
+
+La API `/v1` añade `UNKNOWN`: todo lo conocido está bien pero una cuota
+acumulativa no se pudo leer.
 
 ---
 
