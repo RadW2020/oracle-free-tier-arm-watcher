@@ -1,14 +1,17 @@
-// Package main - Este archivo contiene la lógica para conectar con OCI
-package main
+// Este archivo contiene la lógica para conectar con OCI.
+package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/RadW2020/oracle-free-tier-arm-watcher/internal/freetier"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/database"
@@ -17,329 +20,374 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/objectstorage"
 )
 
-// createConfigProvider crea el proveedor de autenticación de OCI
-// En Go, los errores se devuelven como segundo valor (no se lanzan excepciones)
-func createConfigProvider() (common.ConfigurationProvider, error) {
-	tenancy := os.Getenv("OCI_TENANCY_ID")
-	user := os.Getenv("OCI_USER_ID")
-	fingerprint := os.Getenv("OCI_FINGERPRINT")
-	privateKeyPath := os.Getenv("OCI_PRIVATE_KEY_PATH")
-	region := os.Getenv("OCI_REGION")
+// OCIConfig son las credenciales y el alcance de la tenancy.
+type OCIConfig struct {
+	TenancyID      string
+	UserID         string
+	Fingerprint    string
+	PrivateKeyPath string
+	Region         string
+	CompartmentID  string
+	// CallTimeout acota cada llamada al SDK. Antes todas usaban
+	// context.Background(): una llamada colgada dejaba colgado al cliente.
+	CallTimeout time.Duration
+}
 
-	// Leer la clave privada desde el archivo
-	privateKeyBytes, err := os.ReadFile(privateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("error reading private key: %w", err)
+// OCIConfigFromEnv lee la configuración de las variables de entorno.
+func OCIConfigFromEnv() OCIConfig {
+	return OCIConfig{
+		TenancyID:      os.Getenv("OCI_TENANCY_ID"),
+		UserID:         os.Getenv("OCI_USER_ID"),
+		Fingerprint:    os.Getenv("OCI_FINGERPRINT"),
+		PrivateKeyPath: os.Getenv("OCI_PRIVATE_KEY_PATH"),
+		Region:         os.Getenv("OCI_REGION"),
+		CompartmentID:  os.Getenv("OCI_COMPARTMENT_ID"),
+		CallTimeout:    10 * time.Second,
 	}
+}
 
-	// Crear el proveedor de configuración
-	// common.NewRawConfigurationProvider es una función del SDK de OCI
-	provider := common.NewRawConfigurationProvider(
-		tenancy,
-		user,
-		region,
-		fingerprint,
+// OCI es la fuente real: lee la tenancy con el SDK, sólo con operaciones
+// List*, Get* y SummarizeMetricsData. Nada aquí modifica la cuenta, y así
+// debe seguir: es lo que permite que el usuario de OCI del watcher tenga una
+// política de sólo lectura.
+type OCI struct {
+	cfg OCIConfig
+}
+
+// NewOCI crea la fuente de OCI.
+func NewOCI(cfg OCIConfig) *OCI {
+	if cfg.CallTimeout == 0 {
+		cfg.CallTimeout = 10 * time.Second
+	}
+	return &OCI{cfg: cfg}
+}
+
+func (o *OCI) Kind() string { return "oci" }
+
+// Configured verifica si las credenciales de OCI están configuradas.
+func (o *OCI) Configured() bool {
+	c := o.cfg
+	return c.TenancyID != "" && c.UserID != "" && c.Fingerprint != "" && c.PrivateKeyPath != "" && c.Region != ""
+}
+
+// MissingConfig lista las variables que faltan.
+func (o *OCI) MissingConfig() []string {
+	var missing []string
+	for key, value := range map[string]string{
+		"OCI_TENANCY_ID":       o.cfg.TenancyID,
+		"OCI_USER_ID":          o.cfg.UserID,
+		"OCI_FINGERPRINT":      o.cfg.Fingerprint,
+		"OCI_PRIVATE_KEY_PATH": o.cfg.PrivateKeyPath,
+		"OCI_REGION":           o.cfg.Region,
+	} {
+		if value == "" {
+			missing = append(missing, key)
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+// Scope describe lo que se mide. Los límites del Free Tier son de toda la
+// tenancy, pero aquí sólo se lee un compartimento y NO sus hijos: un recurso
+// en un compartimento hijo no cuenta. Se publica para que nadie lo descubra
+// comparando números con la consola.
+func (o *OCI) Scope() string {
+	return fmt.Sprintf("compartment %s only (child compartments are not included)", o.compartmentID())
+}
+
+func (o *OCI) Now() time.Time { return time.Now().UTC() }
+
+// compartmentID obtiene el ID del compartimento a monitorear.
+func (o *OCI) compartmentID() string {
+	if o.cfg.CompartmentID == "" {
+		// Si no hay compartimento específico, usar el tenancy (root)
+		return o.cfg.TenancyID
+	}
+	return o.cfg.CompartmentID
+}
+
+// provider crea el proveedor de autenticación de OCI. Lee la clave en cada
+// lectura para que una rotación no exija reiniciar.
+func (o *OCI) provider() (common.ConfigurationProvider, error) {
+	privateKeyBytes, err := os.ReadFile(o.cfg.PrivateKeyPath)
+	if err != nil {
+		return nil, &Error{Code: "credentials_unreadable", Message: "OCI private key file cannot be read", Err: err}
+	}
+	return common.NewRawConfigurationProvider(
+		o.cfg.TenancyID,
+		o.cfg.UserID,
+		o.cfg.Region,
+		o.cfg.Fingerprint,
 		string(privateKeyBytes),
 		nil, // passphrase (nil si no tiene)
-	)
-
-	return provider, nil
+	), nil
 }
 
-// getCompartmentID obtiene el ID del compartimento a monitorear
-func getCompartmentID() string {
-	compartmentID := os.Getenv("OCI_COMPARTMENT_ID")
-	if compartmentID == "" {
-		// Si no hay compartimento específico, usar el tenancy (root)
-		return os.Getenv("OCI_TENANCY_ID")
+func (o *OCI) call(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, o.cfg.CallTimeout)
+}
+
+// Read obtiene todo el uso de OCI de forma paralela.
+func (o *OCI) Read(ctx context.Context) (freetier.Reading, error) {
+	if !o.Configured() {
+		return freetier.Reading{}, ErrNotConfigured
 	}
-	return compartmentID
-}
-
-// getOCIUsage obtiene todo el uso de OCI de forma paralela
-// Usa goroutines para hacer las llamadas a la API de OCI concurrentemente
-func getOCIUsage() (*AllUsage, error) {
-	provider, err := createConfigProvider()
+	provider, err := o.provider()
 	if err != nil {
-		return nil, err
+		return freetier.Reading{}, err
 	}
+	compartmentID := o.compartmentID()
 
-	compartmentID := getCompartmentID()
-
-	// Usar goroutines para obtener datos en paralelo
-	// Esto reduce el tiempo de respuesta significativamente
 	var (
-		computeUsage       ComputeUsage
-		blockStorageUsage  StorageUsage
-		objectStorageUsage ObjectStorageUsage
-		loadBalancerUsage  LoadBalancerUsage
-		publicIPUsage      UsageMetric
-		databaseUsage      DatabaseUsage
-		bandwidthUsage     BandwidthUsage
-		saturationUsage    SaturationUsage
+		usage    freetier.AllUsage
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		failures = map[string]freetier.SourceStatus{}
 	)
-
-	// Canal para sincronización (esperamos 8 goroutines)
-	done := make(chan bool, 8)
-
-	// Lanzar todas las consultas en paralelo
-	go func() {
-		computeUsage = getComputeUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	go func() {
-		blockStorageUsage = getBlockStorageUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	go func() {
-		objectStorageUsage = getObjectStorageUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	go func() {
-		loadBalancerUsage = getLoadBalancerUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	go func() {
-		publicIPUsage = getPublicIPsUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	go func() {
-		databaseUsage = getDatabaseUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	go func() {
-		bandwidthUsage = getBandwidthUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	go func() {
-		saturationUsage = getSaturationUsage(provider, compartmentID)
-		done <- true
-	}()
-
-	// Esperar a que todas las goroutines terminen
-	for i := 0; i < 8; i++ {
-		<-done
+	record := func(name string, err error) {
+		if err == nil {
+			return
+		}
+		mu.Lock()
+		failures[name] = statusFor(name, err)
+		mu.Unlock()
 	}
 
-	return &AllUsage{
-		Compute:       computeUsage,
-		BlockStorage:  blockStorageUsage,
-		PublicIPs:     publicIPUsage,
-		ObjectStorage: objectStorageUsage,
-		LoadBalancer:  loadBalancerUsage,
-		Database:      databaseUsage,
-		Bandwidth:     bandwidthUsage,
-		Saturation:    saturationUsage,
-	}, nil
+	// Cada fuente va en su goroutine: son independientes y la latencia total
+	// es la de la más lenta, no la suma.
+	fetchers := map[string]func() error{
+		freetier.SourceCompute: func() (err error) {
+			usage.Compute, err = o.computeUsage(ctx, provider, compartmentID)
+			return err
+		},
+		freetier.SourceBlockStorage: func() (err error) {
+			usage.BlockStorage, err = o.blockStorageUsage(ctx, provider, compartmentID)
+			return err
+		},
+		freetier.SourceObjectStorage: func() (err error) {
+			usage.ObjectStorage, err = o.objectStorageUsage(ctx, provider, compartmentID)
+			return err
+		},
+		freetier.SourceLoadBalancer: func() (err error) {
+			usage.LoadBalancer, err = o.loadBalancerUsage(ctx, provider, compartmentID)
+			return err
+		},
+		freetier.SourcePublicIPs: func() (err error) {
+			usage.PublicIPs, err = o.publicIPsUsage(ctx, provider, compartmentID)
+			return err
+		},
+		freetier.SourceDatabase: func() (err error) {
+			usage.Database, err = o.databaseUsage(ctx, provider, compartmentID)
+			return err
+		},
+		freetier.SourceBandwidth: func() (err error) {
+			usage.Bandwidth, err = o.bandwidthUsage(ctx, provider, compartmentID)
+			return err
+		},
+		freetier.SourceSaturation: func() (err error) {
+			usage.Saturation, err = o.saturationUsage(ctx, provider, compartmentID)
+			return err
+		},
+	}
+	for name, fetch := range fetchers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			record(name, fetch())
+		}()
+	}
+	wg.Wait()
+
+	freetier.Finalize(&usage)
+	return freetier.NewReading(usage, o.Now(), failures), nil
 }
 
-// getPublicIPsUsage monitoriza las IPs públicas reservadas (límite free tier: 2)
-func getPublicIPsUsage(provider common.ConfigurationProvider, compartmentID string) UsageMetric {
-	usage := UsageMetric{Limit: 2} // Límite estándar de Free Tier
+// publicIPsUsage monitoriza las IPs públicas reservadas (límite free tier: 2).
+//
+// Antes esta función se tragaba los errores y devolvía 0 de 2: un permiso
+// que faltase era indistinguible de no tener IPs reservadas.
+func (o *OCI) publicIPsUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.UsageMetric, error) {
+	usage := freetier.UsageMetric{}
 
 	client, err := core.NewVirtualNetworkClientWithConfigurationProvider(provider)
 	if err != nil {
-		return usage
+		return usage, err
 	}
 
-	request := core.ListPublicIpsRequest{
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	response, err := client.ListPublicIps(callCtx, core.ListPublicIpsRequest{
 		CompartmentId: common.String(compartmentID),
 		Scope:         core.ListPublicIpsScopeRegion,
-	}
-
-	response, err := client.ListPublicIps(context.Background(), request)
+	})
 	if err != nil {
-		return usage
+		return usage, err
 	}
 
-	count := len(response.Items)
-	usage.Used = float64(count)
-	usage.Percentage = int((usage.Used / usage.Limit) * 100)
-
-	return usage
+	usage.Used = float64(len(response.Items))
+	return usage, nil
 }
 
-// getComputeUsage obtiene el uso de compute
-func getComputeUsage(provider common.ConfigurationProvider, compartmentID string) ComputeUsage {
-	usage := ComputeUsage{}
+// computeUsage obtiene el uso de compute.
+func (o *OCI) computeUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.ComputeUsage, error) {
+	usage := freetier.ComputeUsage{}
 
-	// Crear cliente de Compute
 	client, err := core.NewComputeClientWithConfigurationProvider(provider)
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
-	// Listar instancias en ejecución
-	// En Go, los parámetros de request suelen ser structs
-	request := core.ListInstancesRequest{
+	// Sólo instancias en ejecución: si una STOPPED cuenta o no contra el
+	// límite de A1 no está verificado aquí, y la descripción de la cuota lo
+	// dice para que nadie lo dé por supuesto.
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	response, err := client.ListInstances(callCtx, core.ListInstancesRequest{
 		CompartmentId:  common.String(compartmentID),
 		LifecycleState: core.InstanceLifecycleStateRunning,
-	}
-
-	response, err := client.ListInstances(context.Background(), request)
+	})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
-	// Procesar las instancias
 	var armOCPUs, armMemoryGB float64
 	var armCount, amdCount int
+	usage.InstanceDetails = []freetier.InstanceInfo{}
 
 	for _, instance := range response.Items {
 		shape := *instance.Shape
+		info := freetier.InstanceInfo{Name: deref(instance.DisplayName), Shape: shape, State: string(instance.LifecycleState)}
+		if instance.ShapeConfig != nil {
+			if instance.ShapeConfig.Ocpus != nil {
+				info.OCPUs = float64(*instance.ShapeConfig.Ocpus)
+			}
+			if instance.ShapeConfig.MemoryInGBs != nil {
+				info.MemoryGB = float64(*instance.ShapeConfig.MemoryInGBs)
+			}
+		}
+		usage.InstanceDetails = append(usage.InstanceDetails, info)
 
 		// Detectar si es ARM (Ampere) o AMD
 		if strings.Contains(shape, "A1") || strings.Contains(shape, "Ampere") {
-			if instance.ShapeConfig != nil {
-				if instance.ShapeConfig.Ocpus != nil {
-					armOCPUs += float64(*instance.ShapeConfig.Ocpus)
-				}
-				if instance.ShapeConfig.MemoryInGBs != nil {
-					armMemoryGB += float64(*instance.ShapeConfig.MemoryInGBs)
-				}
-			}
+			armOCPUs += info.OCPUs
+			armMemoryGB += info.MemoryGB
 			armCount++
-		} else if strings.Contains(shape, "Micro") || strings.Contains(shape, "E2.1.Micro") {
+		} else if strings.Contains(shape, "Micro") {
 			amdCount++
 		}
 	}
 
-	// Calcular porcentajes
-	usage.ARM.OCPUs = UsageMetric{
-		Used:       armOCPUs,
-		Limit:      Limits.Compute.ARM.OCPUs,
-		Percentage: int((armOCPUs / Limits.Compute.ARM.OCPUs) * 100),
-	}
-	usage.ARM.MemoryGB = UsageMetric{
-		Used:       armMemoryGB,
-		Limit:      Limits.Compute.ARM.MemoryGB,
-		Percentage: int((armMemoryGB / Limits.Compute.ARM.MemoryGB) * 100),
-	}
+	usage.ARM.OCPUs.Used = armOCPUs
+	usage.ARM.MemoryGB.Used = armMemoryGB
 	usage.ARM.Instances = armCount
-	usage.AMD.Instances = UsageMetric{
-		Used:       float64(amdCount),
-		Limit:      float64(Limits.Compute.AMD.MaxInstances),
-		Percentage: int((float64(amdCount) / float64(Limits.Compute.AMD.MaxInstances)) * 100),
-	}
+	usage.AMD.Instances.Used = float64(amdCount)
 	usage.TotalInstances = len(response.Items)
-
-	return usage
+	return usage, nil
 }
 
-// getBlockStorageUsage obtiene el uso de block storage
-func getBlockStorageUsage(provider common.ConfigurationProvider, compartmentID string) StorageUsage {
-	usage := StorageUsage{}
+// blockStorageUsage obtiene el uso de block storage.
+func (o *OCI) blockStorageUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.StorageUsage, error) {
+	usage := freetier.StorageUsage{Volumes: []freetier.VolumeInfo{}}
 
 	client, err := core.NewBlockstorageClientWithConfigurationProvider(provider)
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
-	// Obtener boot volumes
-	bootRequest := core.ListBootVolumesRequest{
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	bootResponse, err := client.ListBootVolumes(callCtx, core.ListBootVolumesRequest{
 		CompartmentId: common.String(compartmentID),
-	}
-	bootResponse, err := client.ListBootVolumes(context.Background(), bootRequest)
+	})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
 	var bootVolumeGB int64
 	for _, vol := range bootResponse.Items {
-		if vol.SizeInGBs != nil {
-			bootVolumeGB += *vol.SizeInGBs
-		}
+		size := derefInt64(vol.SizeInGBs)
+		bootVolumeGB += size
+		usage.Volumes = append(usage.Volumes, freetier.VolumeInfo{
+			Name: deref(vol.DisplayName), Kind: "boot", SizeGB: int(size), State: string(vol.LifecycleState),
+		})
 	}
 	usage.BootVolumes.Count = len(bootResponse.Items)
 	usage.BootVolumes.SizeGB = int(bootVolumeGB)
 
-	// Obtener block volumes
-	blockRequest := core.ListVolumesRequest{
+	callCtx2, cancel2 := o.call(ctx)
+	defer cancel2()
+	blockResponse, err := client.ListVolumes(callCtx2, core.ListVolumesRequest{
 		CompartmentId: common.String(compartmentID),
-	}
-	blockResponse, err := client.ListVolumes(context.Background(), blockRequest)
+	})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
 	var blockVolumeGB int64
 	for _, vol := range blockResponse.Items {
-		if vol.SizeInGBs != nil {
-			blockVolumeGB += *vol.SizeInGBs
-		}
+		size := derefInt64(vol.SizeInGBs)
+		blockVolumeGB += size
+		usage.Volumes = append(usage.Volumes, freetier.VolumeInfo{
+			Name: deref(vol.DisplayName), Kind: "block", SizeGB: int(size), State: string(vol.LifecycleState),
+		})
 	}
 	usage.BlockVolumes.Count = len(blockResponse.Items)
 	usage.BlockVolumes.SizeGB = int(blockVolumeGB)
 
-	// Total
-	totalGB := int(bootVolumeGB + blockVolumeGB)
-	usage.Total = UsageMetric{
-		Used:       float64(totalGB),
-		Limit:      float64(Limits.BlockStorage.TotalGB),
-		Percentage: int((float64(totalGB) / float64(Limits.BlockStorage.TotalGB)) * 100),
-	}
-
-	return usage
+	usage.Total.Used = float64(bootVolumeGB + blockVolumeGB)
+	return usage, nil
 }
 
-// getObjectStorageUsage obtiene el uso de object storage
-func getObjectStorageUsage(provider common.ConfigurationProvider, compartmentID string) ObjectStorageUsage {
-	usage := ObjectStorageUsage{}
+// objectStorageUsage obtiene el uso de object storage.
+func (o *OCI) objectStorageUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.ObjectStorageUsage, error) {
+	usage := freetier.ObjectStorageUsage{Buckets: []freetier.BucketInfo{}}
 
 	client, err := objectstorage.NewObjectStorageClientWithConfigurationProvider(provider)
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
 	// Obtener namespace (requerido para object storage)
-	nsRequest := objectstorage.GetNamespaceRequest{}
-	nsResponse, err := client.GetNamespace(context.Background(), nsRequest)
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	nsResponse, err := client.GetNamespace(callCtx, objectstorage.GetNamespaceRequest{})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 	namespace := *nsResponse.Value
 
-	// Listar buckets
-	bucketsRequest := objectstorage.ListBucketsRequest{
+	callCtx2, cancel2 := o.call(ctx)
+	defer cancel2()
+	bucketsResponse, err := client.ListBuckets(callCtx2, objectstorage.ListBucketsRequest{
 		NamespaceName: common.String(namespace),
 		CompartmentId: common.String(compartmentID),
-	}
-	bucketsResponse, err := client.ListBuckets(context.Background(), bucketsRequest)
+	})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
 	var totalBytes int64
-	usage.Buckets = []BucketInfo{}
-
 	for _, bucket := range bucketsResponse.Items {
 		// Obtener detalles del bucket (incluyendo tamaño aproximado)
-		bucketRequest := objectstorage.GetBucketRequest{
+		bucketCtx, bucketCancel := o.call(ctx)
+		bucketResponse, err := client.GetBucket(bucketCtx, objectstorage.GetBucketRequest{
 			NamespaceName: common.String(namespace),
 			BucketName:    bucket.Name,
 			Fields:        []objectstorage.GetBucketFieldsEnum{objectstorage.GetBucketFieldsApproximatesize},
-		}
-		bucketResponse, err := client.GetBucket(context.Background(), bucketRequest)
+		})
+		bucketCancel()
 		if err != nil {
-			usage.Buckets = append(usage.Buckets, BucketInfo{
-				Name:   *bucket.Name,
-				SizeGB: -1, // Indicar error
-			})
+			// -1 es el centinela heredado; SizeKnown lo dice sin trampas.
+			usage.Buckets = append(usage.Buckets, freetier.BucketInfo{Name: *bucket.Name, SizeGB: -1})
 			continue
 		}
 
@@ -349,80 +397,62 @@ func getObjectStorageUsage(provider common.ConfigurationProvider, compartmentID 
 			sizeGB = float64(sizeBytes) / (1024 * 1024 * 1024)
 			totalBytes += sizeBytes
 		}
-
-		usage.Buckets = append(usage.Buckets, BucketInfo{
-			Name:   *bucket.Name,
-			SizeGB: sizeGB,
-		})
+		usage.Buckets = append(usage.Buckets, freetier.BucketInfo{Name: *bucket.Name, SizeGB: sizeGB, SizeKnown: true})
 	}
 
-	totalGB := float64(totalBytes) / (1024 * 1024 * 1024)
-	usage.Total = UsageMetric{
-		Used:       totalGB,
-		Limit:      float64(Limits.ObjectStorage.TotalGB),
-		Percentage: int((totalGB / float64(Limits.ObjectStorage.TotalGB)) * 100),
-	}
-
-	return usage
+	usage.Total.Used = float64(totalBytes) / (1024 * 1024 * 1024)
+	return usage, nil
 }
 
-// getLoadBalancerUsage obtiene el uso de load balancers
-func getLoadBalancerUsage(provider common.ConfigurationProvider, compartmentID string) LoadBalancerUsage {
-	usage := LoadBalancerUsage{}
+// loadBalancerUsage obtiene el uso de load balancers.
+func (o *OCI) loadBalancerUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.LoadBalancerUsage, error) {
+	usage := freetier.LoadBalancerUsage{LoadBalancers: []freetier.LoadBalancerInfo{}}
 
 	client, err := loadbalancer.NewLoadBalancerClientWithConfigurationProvider(provider)
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
-	request := loadbalancer.ListLoadBalancersRequest{
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	response, err := client.ListLoadBalancers(callCtx, loadbalancer.ListLoadBalancersRequest{
 		CompartmentId: common.String(compartmentID),
-	}
-
-	response, err := client.ListLoadBalancers(context.Background(), request)
+	})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
-	count := len(response.Items)
-	usage.Count = UsageMetric{
-		Used:       float64(count),
-		Limit:      float64(Limits.LoadBalancer.Instances),
-		Percentage: int((float64(count) / float64(Limits.LoadBalancer.Instances)) * 100),
-	}
-
-	usage.LoadBalancers = []LoadBalancerInfo{}
+	usage.Count.Used = float64(len(response.Items))
 	for _, lb := range response.Items {
-		usage.LoadBalancers = append(usage.LoadBalancers, LoadBalancerInfo{
-			Name:  *lb.DisplayName,
-			Shape: *lb.ShapeName,
+		usage.LoadBalancers = append(usage.LoadBalancers, freetier.LoadBalancerInfo{
+			Name:  deref(lb.DisplayName),
+			Shape: deref(lb.ShapeName),
 			State: string(lb.LifecycleState),
 		})
 	}
-
-	return usage
+	return usage, nil
 }
 
-// getDatabaseUsage obtiene el uso de Autonomous Databases
-func getDatabaseUsage(provider common.ConfigurationProvider, compartmentID string) DatabaseUsage {
-	usage := DatabaseUsage{}
+// databaseUsage obtiene el uso de Autonomous Databases.
+func (o *OCI) databaseUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.DatabaseUsage, error) {
+	usage := freetier.DatabaseUsage{}
 
 	client, err := database.NewDatabaseClientWithConfigurationProvider(provider)
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
-	request := database.ListAutonomousDatabasesRequest{
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	response, err := client.ListAutonomousDatabases(callCtx, database.ListAutonomousDatabasesRequest{
 		CompartmentId: common.String(compartmentID),
-	}
-
-	response, err := client.ListAutonomousDatabases(context.Background(), request)
+	})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
 	count := 0
@@ -437,37 +467,29 @@ func getDatabaseUsage(provider common.ConfigurationProvider, compartmentID strin
 		}
 	}
 
-	storageGB := storageTB * 1024
 	usage.Count = count
-	usage.AutonomousDBs = UsageMetric{
-		Used:       float64(count),
-		Limit:      float64(Limits.Database.AutonomousDBs),
-		Percentage: int((float64(count) / float64(Limits.Database.AutonomousDBs)) * 100),
-	}
-	usage.StorageUsage = UsageMetric{
-		Used:       storageGB,
-		Limit:      float64(Limits.Database.TotalStorageGB),
-		Percentage: int((storageGB / float64(Limits.Database.TotalStorageGB)) * 100),
-	}
-
-	return usage
+	usage.AutonomousDBs.Used = float64(count)
+	usage.StorageUsage.Used = storageTB * 1024
+	return usage, nil
 }
 
-// getBandwidthUsage obtiene el uso de transferencia (egress) del mes actual
-// usando la API de Monitoring de OCI (VnicToNetworkBytes)
-func getBandwidthUsage(provider common.ConfigurationProvider, compartmentID string) BandwidthUsage {
-	usage := BandwidthUsage{LimitTB: Limits.Bandwidth.EgressTBPerMonth}
+// bandwidthUsage obtiene el uso de transferencia (egress) del mes actual
+// usando la API de Monitoring de OCI (VnicToNetworkBytes).
+func (o *OCI) bandwidthUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.BandwidthUsage, error) {
+	usage := freetier.BandwidthUsage{}
 
 	client, err := monitoring.NewMonitoringClientWithConfigurationProvider(provider)
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
-	now := time.Now().UTC()
+	now := o.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 
-	request := monitoring.SummarizeMetricsDataRequest{
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	response, err := client.SummarizeMetricsData(callCtx, monitoring.SummarizeMetricsDataRequest{
 		CompartmentId: common.String(compartmentID),
 		SummarizeMetricsDataDetails: monitoring.SummarizeMetricsDataDetails{
 			Namespace: common.String("oci_vcn"),
@@ -475,12 +497,10 @@ func getBandwidthUsage(provider common.ConfigurationProvider, compartmentID stri
 			StartTime: &common.SDKTime{Time: startOfMonth},
 			EndTime:   &common.SDKTime{Time: now},
 		},
-	}
-
-	response, err := client.SummarizeMetricsData(context.Background(), request)
+	})
 	if err != nil {
 		usage.Error = err.Error()
-		return usage
+		return usage, err
 	}
 
 	var totalBytes float64
@@ -492,141 +512,177 @@ func getBandwidthUsage(provider common.ConfigurationProvider, compartmentID stri
 		}
 	}
 
-	egressGB := totalBytes / (1024 * 1024 * 1024)
-	limitGB := float64(Limits.Bandwidth.EgressTBPerMonth) * 1024
-	usage.EgressGB = egressGB
-	if limitGB > 0 {
-		usage.Percentage = int((egressGB / limitGB) * 100)
-	}
-
-	return usage
+	usage.EgressGB = totalBytes / (1024 * 1024 * 1024)
+	return usage, nil
 }
 
 // ---------------------------------------------------------------------------
 // Señales de saturación (no son cuota)
 // ---------------------------------------------------------------------------
 
-// queryMonitoringSeries ejecuta una query MQL y devuelve todos los datapoints
-// de la primera serie, ordenados de más antiguo a más reciente.
+// Series devuelve una serie de OCI Monitoring para una ventana.
+func (o *OCI) Series(ctx context.Context, q SeriesQuery) (Series, error) {
+	spec, ok := MetricByName(q.Metric)
+	if !ok {
+		return Series{}, &Error{Code: "invalid_metric", Message: "unknown metric " + string(q.Metric)}
+	}
+	if !o.Configured() {
+		return Series{}, ErrNotConfigured
+	}
+	provider, err := o.provider()
+	if err != nil {
+		return Series{}, err
+	}
+	client, err := monitoring.NewMonitoringClientWithConfigurationProvider(provider)
+	if err != nil {
+		return Series{}, err
+	}
+	query := spec.Query(q.Resolution)
+	points, err := o.queryMonitoringSeries(ctx, client, o.compartmentID(), spec, query, q.Start, q.End)
+	if err != nil {
+		return Series{}, err
+	}
+	return Series{Spec: spec, Query: query, Points: points}, nil
+}
+
+// queryMonitoringSeries ejecuta una query MQL y devuelve los datapoints
+// ordenados de más antiguo a más reciente.
+//
+// Si hay varias series (varias VNICs), se combinan por instante: se suman
+// los bytes y los paquetes y se promedian los porcentajes. Antes se tomaba
+// sólo la primera serie, que con una VNIC da lo mismo y con dos mentiría.
 //
 // La API de Monitoring etiqueta cada bucket con el FINAL de su intervalo: en
 // una serie [1m], el punto de las 15:15 contiene 15:14:00-15:15:00.
-func queryMonitoringSeries(
-	client monitoring.MonitoringClient,
-	compartmentID, namespace, query string,
-	window time.Duration,
-) ([]monitoring.AggregatedDatapoint, error) {
-	now := time.Now().UTC()
-
-	request := monitoring.SummarizeMetricsDataRequest{
+func (o *OCI) queryMonitoringSeries(ctx context.Context, client monitoring.MonitoringClient, compartmentID string, spec MetricSpec, query string, start, end time.Time) ([]Point, error) {
+	callCtx, cancel := o.call(ctx)
+	defer cancel()
+	response, err := client.SummarizeMetricsData(callCtx, monitoring.SummarizeMetricsDataRequest{
 		CompartmentId: common.String(compartmentID),
 		SummarizeMetricsDataDetails: monitoring.SummarizeMetricsDataDetails{
-			Namespace: common.String(namespace),
+			Namespace: common.String(spec.Namespace),
 			Query:     common.String(query),
-			StartTime: &common.SDKTime{Time: now.Add(-window)},
-			EndTime:   &common.SDKTime{Time: now},
+			StartTime: &common.SDKTime{Time: start},
+			EndTime:   &common.SDKTime{Time: end},
 		},
-	}
-
-	response, err := client.SummarizeMetricsData(context.Background(), request)
+	})
 	if err != nil {
 		return nil, err
 	}
-	if len(response.Items) == 0 {
-		return nil, nil
-	}
 
-	points := response.Items[0].AggregatedDatapoints
-	sort.Slice(points, func(i, j int) bool {
-		return points[i].Timestamp.Time.Before(points[j].Timestamp.Time)
-	})
+	sums := map[time.Time]float64{}
+	counts := map[time.Time]int{}
+	for _, item := range response.Items {
+		for _, dp := range item.AggregatedDatapoints {
+			if dp.Value == nil || dp.Timestamp == nil {
+				continue
+			}
+			t := dp.Timestamp.Time.UTC()
+			sums[t] += *dp.Value
+			counts[t]++
+		}
+	}
+	points := make([]Point, 0, len(sums))
+	for t, v := range sums {
+		if spec.Aggregation == "mean" {
+			v /= float64(counts[t])
+		}
+		points = append(points, Point{T: t, V: v})
+	}
+	sort.Slice(points, func(i, j int) bool { return points[i].T.Before(points[j].T) })
 	return points, nil
 }
 
-// latestDatapoint devuelve el valor y la antigüedad del punto más reciente.
-//
-// Hace falta la antigüedad porque Monitoring publica con unos minutos de
-// retraso: dar el valor sin decir de cuándo es invita a leer un pico viejo
-// como si estuviera pasando ahora.
-func latestDatapoint(points []monitoring.AggregatedDatapoint) (value float64, age time.Duration, ok bool) {
-	for i := len(points) - 1; i >= 0; i-- {
-		if points[i].Value == nil {
-			continue
-		}
-		return *points[i].Value, time.Since(points[i].Timestamp.Time), true
-	}
-	return 0, 0, false
-}
-
-// sumDatapoints suma todos los puntos de la serie.
-func sumDatapoints(points []monitoring.AggregatedDatapoint) float64 {
-	var total float64
-	for _, p := range points {
-		if p.Value != nil {
-			total += *p.Value
-		}
-	}
-	return total
-}
-
-// getSaturationUsage obtiene las señales que explican una degradación del
-// host: CPU, tráfico real de la VNIC y paquetes descartados por el shaper
-// de OCI.
-//
-// Por qué la VNIC y no oci_computeagent para el tráfico: NetworksBytesIn/Out
-// del agente suman TODAS las interfaces, incluidas las de Docker, así que en
-// esta máquina marcan ~50 GB/día de salida cuando lo que sale de verdad a
-// internet son 8,5 GB/día. Para tráfico real, oci_vcn.
-func getSaturationUsage(provider common.ConfigurationProvider, compartmentID string) SaturationUsage {
-	usage := SaturationUsage{}
-
+// saturationUsage obtiene las señales que explican una degradación del
+// host: CPU, memoria, tráfico real de la VNIC y paquetes descartados por el
+// shaper de OCI.
+func (o *OCI) saturationUsage(ctx context.Context, provider common.ConfigurationProvider, compartmentID string) (freetier.SaturationUsage, error) {
 	client, err := monitoring.NewMonitoringClientWithConfigurationProvider(provider)
 	if err != nil {
-		usage.Error = err.Error()
-		return usage
+		return freetier.SaturationUsage{Error: err.Error()}, err
 	}
+	now := o.Now()
+	return SaturationFromSeries(now, func(m Metric, window time.Duration) ([]Point, error) {
+		spec, _ := MetricByName(m)
+		return o.queryMonitoringSeries(ctx, client, compartmentID, spec, spec.Query(time.Minute), now.Add(-window), now)
+	})
+}
+
+// SaturationFromSeries calcula los valores instantáneos de saturación a
+// partir de series de 1 minuto. La comparten la fuente de OCI y la de
+// fixtures, para que el mismo escenario no pueda dar un número en /usage y
+// otro en la línea de tiempo.
+func SaturationFromSeries(now time.Time, fetch func(Metric, time.Duration) ([]Point, error)) (freetier.SaturationUsage, error) {
+	usage := freetier.SaturationUsage{}
 
 	// Ventana corta para los valores instantáneos: suficiente para cubrir el
 	// retraso de publicación de Monitoring sin traerse media hora de puntos.
 	const shortWindow = 20 * time.Minute
 	maxAge := time.Duration(0)
+	var errs []error
 
-	if points, err := queryMonitoringSeries(client, compartmentID, "oci_computeagent", "CpuUtilization[1m].mean()", shortWindow); err != nil {
-		usage.Error = err.Error()
-	} else if value, age, ok := latestDatapoint(points); ok {
-		usage.CPUPercentage = value
-		if age > maxAge {
-			maxAge = age
+	latest := func(m Metric, window time.Duration, set func(v float64), trackAge bool) []Point {
+		points, err := fetch(m, window)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", m, err))
+			return nil
 		}
-	}
-
-	if points, err := queryMonitoringSeries(client, compartmentID, "oci_vcn", "VnicFromNetworkBytes[1m].sum()", shortWindow); err != nil {
-		usage.Error = err.Error()
-	} else if value, age, ok := latestDatapoint(points); ok {
-		usage.IngressMBPerMin = value / (1024 * 1024)
-		if age > maxAge {
-			maxAge = age
+		if value, t, ok := latestPoint(points); ok {
+			set(value)
+			if age := now.Sub(t); trackAge && age > maxAge {
+				maxAge = age
+			}
+		} else {
+			usage.MissingSignals = append(usage.MissingSignals, string(m))
 		}
+		return points
 	}
 
-	if points, err := queryMonitoringSeries(client, compartmentID, "oci_vcn", "VnicToNetworkBytes[1m].sum()", shortWindow); err != nil {
-		usage.Error = err.Error()
-	} else if value, _, ok := latestDatapoint(points); ok {
-		usage.EgressMBPerMin = value / (1024 * 1024)
-	}
+	latest(MetricCPU, shortWindow, func(v float64) { usage.CPUPercentage = v }, true)
+	latest(MetricMemory, shortWindow, func(v float64) { usage.MemoryPercentage = v }, false)
+	latest(MetricIngressBytes, shortWindow, func(v float64) { usage.IngressMBPerMin = v / (1024 * 1024) }, true)
+	latest(MetricEgressBytes, shortWindow, func(v float64) { usage.EgressMBPerMin = v / (1024 * 1024) }, false)
 
 	// Los descartes se piden a una hora y no al minuto: son ráfagas cortas
 	// (el 17/09 duraron seis minutos) y el worker sólo refresca cada 15 min,
 	// así que preguntar sólo por el último minuto los perdería casi siempre.
-	if points, err := queryMonitoringSeries(client, compartmentID, "oci_vcn", "VnicIngressDropsThrottle[1m].sum()", time.Hour); err != nil {
-		usage.Error = err.Error()
-	} else {
-		usage.IngressDropsLastHour = sumDatapoints(points)
-		if value, _, ok := latestDatapoint(points); ok {
-			usage.IngressDropsPerMin = value
-		}
+	drops := latest(MetricIngressDrops, time.Hour, func(v float64) { usage.IngressDropsPerMin = v }, false)
+	for _, p := range drops {
+		usage.IngressDropsLastHour += p.V
 	}
 
 	usage.SampleAgeSeconds = int(maxAge.Seconds())
-	return usage
+	if len(errs) > 0 {
+		err := errors.Join(errs...)
+		usage.Error = err.Error()
+		return usage, err
+	}
+	return usage, nil
+}
+
+// latestPoint devuelve el valor y el instante del punto más reciente.
+//
+// Hace falta el instante porque Monitoring publica con unos minutos de
+// retraso: dar el valor sin decir de cuándo es invita a leer un pico viejo
+// como si estuviera pasando ahora.
+func latestPoint(points []Point) (float64, time.Time, bool) {
+	if len(points) == 0 {
+		return 0, time.Time{}, false
+	}
+	p := points[len(points)-1]
+	return p.V, p.T, true
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func derefInt64(v *int64) int64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }

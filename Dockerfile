@@ -1,5 +1,6 @@
 # Etapa 1: Compilación
-FROM golang:1.23-alpine AS builder
+# Go 1.25+ porque lo exige el SDK de MCP (github.com/modelcontextprotocol/go-sdk).
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -13,8 +14,10 @@ RUN go mod download
 # Copiar el resto del código
 COPY . .
 
-# Compilar de forma estática
-RUN CGO_ENABLED=0 GOOS=linux go build -o watcher .
+# Compilar de forma estática. Los escenarios de fixtures van embebidos en el
+# binario (internal/source/scenarios), así que el demo no necesita ficheros.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o watcher .
 
 # Etapa 2: Imagen mínima de ejecución
 FROM alpine:latest
@@ -29,6 +32,8 @@ COPY --from=builder /app/watcher .
 
 # Puerto por defecto
 EXPOSE 8088
+
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8088/health >/dev/null || exit 1
 
 # Ejecutar
 CMD ["./watcher"]
