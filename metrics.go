@@ -3,6 +3,8 @@ package main
 import (
 	"time"
 
+	"github.com/RadW2020/oracle-free-tier-arm-watcher/internal/freetier"
+	"github.com/RadW2020/oracle-free-tier-arm-watcher/internal/snapshot"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -64,7 +66,7 @@ var (
 		Name: "oci_object_storage_gb_limit",
 		Help: "Object Storage (GB) limit in Free Tier",
 	})
-	
+
 	bucketSize = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "oci_object_storage_bucket_gb",
 		Help: "Size of an individual Object Storage bucket (GB)",
@@ -132,6 +134,10 @@ var (
 		Name: "oci_instance_cpu_percentage",
 		Help: "CPU utilization of the instance (%), from OCI Monitoring",
 	})
+	instanceMemoryPercentage = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_instance_memory_percentage",
+		Help: "Memory utilization of the instance (%), from OCI Monitoring",
+	})
 	networkIngressRate = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "oci_network_ingress_mb_per_min",
 		Help: "Real inbound traffic on the instance VNIC (MB/min), excludes Docker interfaces",
@@ -167,10 +173,38 @@ var (
 		Name: "oci_watcher_last_update_timestamp",
 		Help: "Unix timestamp of the last successful data fetch from OCI",
 	})
+
+	// oci_overall_status no sabe de datos que faltan (una fuente caída
+	// cuenta como 0 %): este gauge es el que lo dice. Una alerta sobre
+	// oci_overall_status sin mirar éste puede estar leyendo ceros de relleno.
+	dataComplete = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "oci_data_complete",
+		Help: "1 if every OCI source answered in the last read, 0 if some values are placeholders for unknown data",
+	})
+	ociReadsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "watcher_oci_reads_total",
+		Help: "Full reads of the tenancy, by outcome (ok, partial, error)",
+	}, []string{"outcome"})
 )
 
-// updateMetrics actualiza los valores de Prometheus con los datos de AllUsage
-func updateMetrics(usage *AllUsage) {
+// registerSnapshotAge publica la antigüedad de la lectura guardada.
+func registerSnapshotAge(store *snapshot.Store) {
+	promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "watcher_snapshot_age_seconds",
+		Help: "Age of the cached snapshot served by /v1 and MCP (-1 if there is none yet)",
+	}, func() float64 {
+		snap, ok := store.Current()
+		if !ok {
+			return -1
+		}
+		return store.Source().Now().Sub(snap.Reading.ObservedAt).Seconds()
+	})
+}
+
+// updateMetrics actualiza los valores de Prometheus con una lectura
+func updateMetrics(reading freetier.Reading) {
+	usage := &reading.Usage
+
 	// Compute
 	armOCPUsUsed.Set(usage.Compute.ARM.OCPUs.Used)
 	armOCPUsLimit.Set(usage.Compute.ARM.OCPUs.Limit)
@@ -188,7 +222,7 @@ func updateMetrics(usage *AllUsage) {
 	// Object Storage
 	objectStorageUsed.Set(usage.ObjectStorage.Total.Used)
 	objectStorageLimit.Set(usage.ObjectStorage.Total.Limit)
-	
+
 	// Limpiar métricas de buckets anteriores (para evitar buckets borrados)
 	bucketSize.Reset()
 	for _, b := range usage.ObjectStorage.Buckets {
@@ -214,6 +248,7 @@ func updateMetrics(usage *AllUsage) {
 
 	// Saturación (no entra en el status: ver comentario en la declaración)
 	instanceCPUPercentage.Set(usage.Saturation.CPUPercentage)
+	instanceMemoryPercentage.Set(usage.Saturation.MemoryPercentage)
 	networkIngressRate.Set(usage.Saturation.IngressMBPerMin)
 	networkEgressRate.Set(usage.Saturation.EgressMBPerMin)
 	networkIngressDropsRate.Set(usage.Saturation.IngressDropsPerMin)
@@ -224,9 +259,9 @@ func updateMetrics(usage *AllUsage) {
 	// diseno. Esta maquina tiene las 4 OCPUs, los 24 GB y los 200 GB de
 	// disco al 100 % a proposito, y con el criterio anterior el gauge
 	// llevaba meses clavado en CRITICAL: un semaforo siempre en rojo que
-	// nadie mira. La logica vive en assessQuotas (main.go) para que /usage,
-	// /status y las metricas no puedan discrepar.
-	assessment := assessQuotas(usage)
+	// nadie mira. La logica vive en freetier.Assess para que /usage,
+	// /status, la API /v1 y las metricas no puedan discrepar.
+	assessment := freetier.Assess(reading)
 	allocationPercentage.Set(float64(assessment.AllocationPercentage))
 
 	statusValue := 0.0
@@ -241,36 +276,13 @@ func updateMetrics(usage *AllUsage) {
 	overallStatus.Set(statusValue)
 
 	lastUpdateTimestamp.Set(float64(time.Now().Unix()))
-}
 
-// BackgroundMetricsWorker inicia un loop que actualiza las métricas periódicamente
-func BackgroundMetricsWorker(interval time.Duration) {
-	logger.Info().Dur("interval", interval).Msg("Starting background metrics worker")
-	
-	// Primera ejecución inmediata
-	runUpdate()
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		runUpdate()
+	outcome := "ok"
+	if reading.Complete() {
+		dataComplete.Set(1)
+	} else {
+		dataComplete.Set(0)
+		outcome = "partial"
 	}
-}
-
-func runUpdate() {
-	if !isConfigured() {
-		logger.Warn().Msg("Metrics worker: OCI not configured, skipping update")
-		return
-	}
-
-	logger.Debug().Msg("Metrics worker: Fetching OCI usage...")
-	usage, err := getOCIUsage()
-	if err != nil {
-		logger.Error().Err(err).Msg("Metrics worker: Error fetching OCI usage")
-		return
-	}
-
-	updateMetrics(usage)
-	logger.Info().Msg("Metrics worker: Successfully updated Prometheus metrics")
+	ociReadsTotal.WithLabelValues(outcome).Inc()
 }

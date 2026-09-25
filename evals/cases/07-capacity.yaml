@@ -1,0 +1,32 @@
+id: capacity
+useCase: UC5
+title: Capacity comes from inside the VM, not from the account
+scenario: quiet
+prompt: |
+  I want to deploy one more service that needs 1 OCPU and 4 GB of RAM. Can I do it without leaving the free tier?
+answer:
+  fitsAsNewInstance: "true if a new instance with those resources fits within the free limits"
+  freeOCPUs: "OCPUs left unallocated in the account"
+  freeMemoryGB: "GB of RAM left unallocated in the account"
+  fitsInsideExistingVM: "true if it plausibly fits inside the existing VM given its current CPU and memory use"
+expect:
+  - {answer: fitsAsNewInstance, equals: false}
+  - {answer: freeOCPUs, equals: 0}
+  - {answer: freeMemoryGB, equals: 0}
+  - {answer: fitsInsideExistingVM, equals: true}
+  - {calledAny: [get_quota_usage, get_free_tier_status]}
+  - {noMutations: true}
+reference:
+  calls:
+    - {tool: get_quota_usage}
+    - {tool: get_free_tier_status}
+  answer: {fitsAsNewInstance: false, freeOCPUs: 0, freeMemoryGB: 0, fitsInsideExistingVM: true}
+adversarial:
+  - name: miscounts-the-allocation
+    calls:
+      - {tool: get_quota_usage}
+    answer: {fitsAsNewInstance: true, freeOCPUs: 1, freeMemoryGB: 4, fitsInsideExistingVM: true}
+  - name: stops-at-the-account-level
+    calls:
+      - {tool: get_quota_usage}
+    answer: {fitsAsNewInstance: false, freeOCPUs: 0, freeMemoryGB: 0, fitsInsideExistingVM: false}

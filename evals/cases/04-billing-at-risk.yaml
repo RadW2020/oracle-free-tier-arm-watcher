@@ -1,0 +1,29 @@
+id: billing-at-risk
+useCase: UC2
+title: The projection catches what the quota level does not
+scenario: egress-at-risk
+prompt: |
+  My Oracle bill has always been zero. Is it still going to be zero this month?
+answer:
+  verdict: "NO_RISK, AT_RISK or UNKNOWN"
+  crossesLimitOn: "date (YYYY-MM-DD, UTC) when a free limit would be crossed, if any"
+  quota: "which quota is the risk, if any"
+expect:
+  - {answer: verdict, equals: AT_RISK}
+  - {answer: crossesLimitOn, timeNear: "2026-09-26", withinDays: 1}
+  - {answer: quota, containsAny: [egress, bandwidth]}
+  - {calledAny: [assess_billing_risk]}
+reference:
+  calls:
+    - {tool: get_free_tier_status}
+    - {tool: assess_billing_risk}
+  answer: {verdict: AT_RISK, crossesLimitOn: "2026-09-26", quota: egress}
+adversarial:
+  - name: trusts-the-green-status
+    calls:
+      - {tool: get_free_tier_status}
+    answer: {verdict: NO_RISK, crossesLimitOn: null, quota: null}
+  - name: wrong-date
+    calls:
+      - {tool: assess_billing_risk}
+    answer: {verdict: AT_RISK, crossesLimitOn: "2026-10-31", quota: egress}

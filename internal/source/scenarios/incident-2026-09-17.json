@@ -1,0 +1,184 @@
+{
+  "name": "incident-2026-09-17",
+  "description": "Synthetic reconstruction of the 17/09/2026 incident, shaped after the aggregates in POSTMORTEM-2026-09-17.md (not a raw export). AIDRA downloads a Sentinel-1 scene at line rate at 15:14 UTC (17:14 CEST): VNIC ingress 379 MB/min and ~81,000 packets dropped by the OCI ingress shaper in 6 minutes, then CPU at 35.5% for 55 minutes. Every quota stays green. On the 17th a Tip & Cue loop re-downloads the same scene between 16:29 and 18:05 UTC. The Checkly failure at 15:13 UTC falls in a minute with 0 drops and is not explained by the host data.",
+  "synthetic": true,
+  "now": "2026-09-17T18:30:00Z",
+  "compartment": "ocid1.tenancy.oc1..demo",
+  "usage": {
+    "compute": {
+      "arm": {
+        "ocpus": {
+          "used": 4
+        },
+        "memoryGB": {
+          "used": 24
+        },
+        "instances": 1
+      },
+      "amd": {
+        "instances": {
+          "used": 0
+        }
+      },
+      "totalInstances": 1,
+      "instanceDetails": [
+        {
+          "name": "coolify-host",
+          "shape": "VM.Standard.A1.Flex",
+          "ocpus": 4,
+          "memoryGB": 24,
+          "state": "RUNNING"
+        }
+      ]
+    },
+    "blockStorage": {
+      "bootVolumes": {
+        "count": 1,
+        "sizeGB": 200
+      },
+      "blockVolumes": {
+        "count": 0,
+        "sizeGB": 0
+      },
+      "total": {
+        "used": 200
+      },
+      "volumes": [
+        {
+          "name": "coolify-host (Boot Volume)",
+          "kind": "boot",
+          "sizeGB": 200,
+          "state": "AVAILABLE"
+        }
+      ]
+    },
+    "publicIPs": {
+      "used": 1
+    },
+    "objectStorage": {
+      "buckets": [
+        {
+          "name": "postiz-media",
+          "sizeGB": 0.0625,
+          "sizeKnown": true
+        },
+        {
+          "name": "media-backups",
+          "sizeGB": 0.0375,
+          "sizeKnown": true
+        },
+        {
+          "name": "terraform-state",
+          "sizeGB": 0.0002,
+          "sizeKnown": true
+        }
+      ],
+      "total": {
+        "used": 0.1002
+      }
+    },
+    "loadBalancer": {
+      "count": {
+        "used": 0
+      },
+      "loadBalancers": []
+    },
+    "database": {
+      "autonomousDBs": {
+        "used": 0
+      },
+      "storageUsage": {
+        "used": 0
+      },
+      "count": 0
+    },
+    "bandwidth": {
+      "egressGB": 142.6
+    }
+  },
+  "series": {
+    "from": "2026-09-14T00:00:00Z",
+    "lagSeconds": 180,
+    "baseline": {
+      "ingress_bytes": 8300000.0,
+      "egress_bytes": 6200000.0,
+      "ingress_throttle_drops": 0,
+      "cpu_percent": 6.0,
+      "memory_percent": 31.0
+    },
+    "jitter": {
+      "ingress_bytes": 0.2,
+      "egress_bytes": 0.15,
+      "cpu_percent": 0.15,
+      "memory_percent": 0.02
+    },
+    "events": [
+      {
+        "metric": "ingress_bytes",
+        "start": "2026-09-15T15:14:00Z",
+        "end": "2026-09-15T15:20:00Z",
+        "value": 397410304,
+        "daily": true,
+        "note": "AIDRA scheduled download at line rate (postmortem: 379 MB/min sustained, 1.7 GB in ~5 min). Same pattern on the 15th, 16th and 17th."
+      },
+      {
+        "metric": "ingress_throttle_drops",
+        "start": "2026-09-15T15:14:00Z",
+        "end": "2026-09-15T15:20:00Z",
+        "value": 13500,
+        "daily": true,
+        "note": "Postmortem: ~81,000 packets dropped in 6 minutes, 0 before and 0 after"
+      },
+      {
+        "metric": "cpu_percent",
+        "start": "2026-09-15T15:20:00Z",
+        "end": "2026-09-15T16:15:00Z",
+        "value": 35.5,
+        "daily": true,
+        "note": "Postmortem: CPU 6% -> 35.5% flat for 55 min during YOLO+CFAR detection"
+      },
+      {
+        "metric": "ingress_bytes",
+        "start": "2026-09-17T16:29:00Z",
+        "end": "2026-09-17T17:26:00Z",
+        "value": 125829120,
+        "note": "Cue-triggered re-download with two failed attempts (assumed rate: the postmortem gives no throughput for it)"
+      },
+      {
+        "metric": "ingress_bytes",
+        "start": "2026-09-17T17:27:00Z",
+        "end": "2026-09-17T17:32:00Z",
+        "value": 397410304,
+        "note": "Re-download of the same 1,698 MB scene"
+      },
+      {
+        "metric": "ingress_bytes",
+        "start": "2026-09-17T17:44:00Z",
+        "end": "2026-09-17T17:54:00Z",
+        "value": 198705152.0,
+        "note": "Re-download of the same scene"
+      },
+      {
+        "metric": "ingress_bytes",
+        "start": "2026-09-17T17:56:00Z",
+        "end": "2026-09-17T18:03:00Z",
+        "value": 278187212.8,
+        "note": "Re-download of the same scene"
+      },
+      {
+        "metric": "ingress_throttle_drops",
+        "start": "2026-09-17T17:27:00Z",
+        "end": "2026-09-17T17:32:00Z",
+        "value": 9000,
+        "note": "Assumed: the postmortem gives no drop counts for the re-downloads"
+      },
+      {
+        "metric": "cpu_percent",
+        "start": "2026-09-17T16:29:00Z",
+        "end": "2026-09-17T18:05:00Z",
+        "value": 35.5,
+        "note": "Chained pipeline runs"
+      }
+    ]
+  }
+}

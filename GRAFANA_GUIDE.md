@@ -59,9 +59,9 @@ prometheus.scrape "local_system" {
 prometheus.remote_write "grafana_cloud" {
   endpoint {
     url = "https://prometheus-prod-XX-XXXX.grafana.net/api/prom/push"
-    auth {
+    basic_auth {
       username = "TU_USER_ID"
-      password = "TU_GRAFANA_CLOUD_API_KEY"
+      password = env("GRAFANA_CLOUD_API_TOKEN")
     }
   }
 }
@@ -136,6 +136,7 @@ horas mientras todas las cuotas seguían en verde: **«¿por qué va todo lento?
 | Métrica                                      | Descripción                                                    |
 | -------------------------------------------- | -------------------------------------------------------------- |
 | `oci_instance_cpu_percentage`                | CPU de la instancia (%)                                        |
+| `oci_instance_memory_percentage`             | Memoria de la instancia (%)                                    |
 | `oci_network_ingress_mb_per_min`             | Tráfico de ENTRADA real de la VNIC (MB/min)                    |
 | `oci_network_egress_mb_per_min`              | Tráfico de SALIDA real de la VNIC (MB/min)                     |
 | `oci_network_ingress_throttle_drops_per_min` | Paquetes de entrada descartados por el shaper de OCI           |
@@ -155,3 +156,17 @@ Dos avisos de lectura:
   verdad a internet son 8,5 GB/día.
 
 _Tip: Puedes configurar alertas en Grafana Cloud para que te avisen por Discord/Telegram si `oci_overall_status > 1` o si `oci_network_ingress_throttle_drops_1h > 0`._
+
+## Métricas del propio watcher
+
+| Métrica                                   | Descripción                                                                 |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| `oci_data_complete`                       | 1 si todas las fuentes de OCI respondieron en la última lectura; 0 si algún valor es relleno |
+| `watcher_snapshot_age_seconds`            | Antigüedad de la lectura que sirven `/v1` y MCP                             |
+| `watcher_oci_reads_total{outcome}`        | Lecturas completas de la tenancy: `ok`, `partial`, `error`                  |
+| `watcher_requests_total{client,transport,operation,outcome}` | Llamadas de agentes y clientes a `/v1` y MCP             |
+| `watcher_request_duration_seconds`        | Duración de esas llamadas                                                   |
+
+`oci_overall_status` no sabe de datos que faltan: una fuente caída cuenta como
+0 %. Una alerta sobre él debería ir acompañada de `oci_data_complete == 1`.
+

@@ -1,0 +1,9 @@
+{
+  "name": "not-configured",
+  "description": "The watcher is running but has no OCI credentials: nothing can be measured. Synthetic.",
+  "synthetic": true,
+  "now": "2026-09-25T09:00:00Z",
+  "configured": false,
+  "usage": {},
+  "series": {}
+}

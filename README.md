@@ -1,294 +1,263 @@
-# Oracle Free Tier "Ultimate" Suite 🛠️
+# Oracle Free Tier Watcher
 
-Este repositorio contiene las herramientas definitivas para gestionar y aprovechar al máximo la **Oracle Cloud Free Tier** (ARM Ampere).
+A small Go service that keeps an Oracle Cloud **Always Free** tenancy free and
+explains it when it gets slow. It watches one fully allocated ARM VM (4 OCPU /
+24 GB / 200 GB) that hosts four other products, and it is operated by **humans
+and AI agents as first-class clients of the same API**.
 
-## 📦 Componentes del Suite
+It answers two questions:
 
-### 1. 🔍 Oracle Free Tier Watcher (Go)
+- **"Am I about to be billed?"** Usage against the free limits. The service
+  separates quota that is *allocated by design* (100 % OCPUs, RAM and disk is
+  the goal, not an incident) from quota that *accrues on its own* (object
+  storage, DB storage, monthly egress). Only accruing quota can end in an
+  invoice, so only it drives the status.
+- **"Why is everything slow?"** Host saturation from OCI Monitoring: real VNIC
+  traffic, packets dropped by OCI's ingress shaper, CPU and memory. It was added
+  after the [17/09/2026 incident](POSTMORTEM-2026-09-17.md), when a satellite
+  download saturated the VM while every quota stayed green.
 
-Servicio ligero para monitorear el uso de tus recursos y evitar cargos inesperados.
+The repo also holds the whole Checkly account as code (`checkly/`): 18 checks
+across the hosted products.
 
-- **Binario único** - Sin dependencias en el servidor.
-- **Eficiente** - Uso mínimo de RAM/CPU.
-- **Alertas** - Monitoreo de OCPUs, RAM, Disco y Transferencia.
+## Agent-first architecture
 
----
+### What an agent can do
 
-<a name="watcher-go-details"></a>
+An agent connected over MCP (or REST) can answer the operator's real questions
+without a console, a shell or the OCI signing key:
 
-## 🔍 Watcher Go - Detalles
+| Ask the agent | Tool it uses |
+|---|---|
+| "How is my free tier doing?" | `get_free_tier_status` → follows its `nextSteps` |
+| "Am I going to be charged this month?" | `assess_billing_risk`: thresholds + month-end egress projection |
+| "Why did the checks time out at 17:14 on the 17th?" | `get_saturation_timeline`: 1m series, drop intervals, publication lag |
+| "What's using my storage? Can I host one more service?" | `get_quota_usage`: per-resource breakdown, name search |
+| "Is the watcher broken or is it OCI?" | `get_watcher_diagnostics`: per-source errors, retryability, snapshot age |
+| "Get me fresh numbers" | `refresh_usage_snapshot`: the only side effect; scoped, cooldown, idempotent |
 
-## Endpoints
+### Why the interface exists
 
-| Endpoint       | Descripción                                         | Auth |
-| -------------- | --------------------------------------------------- | ---- |
-| `GET /usage`   | Uso detallado de todos los recursos con porcentajes | ✅   |
-| `GET /status`  | Estado rápido (OK/ATTENTION/WARNING/CRITICAL)       | ✅   |
-| `GET /health`  | Health check simple                                 | ❌   |
-| `GET /limits`  | Límites de la Free Tier                             | ✅   |
-| `GET /metrics` | Métricas Prometheus para Grafana                    | ❌   |
+The postmortem investigation was done by hand. It meant using the `oci` CLI with
+the tenancy's signing key, hand-written MQL and a UTC/CEST conversion, and
+knowing three things written down nowhere else:
 
-> **🔒 Autenticación:** Los endpoints protegidos requieren el header `X-API-Key` con tu clave configurada en el `.env`. El endpoint `/metrics` es público para facilitar el scrapeo local.
+- Monitoring buckets are labelled with the *end* of the interval.
+- `oci_computeagent` also counts Docker's interfaces.
+- The data arrives minutes late.
 
-## Instalación de Go
+Letting an agent do the same work used to require handing it that key: whatever
+the OCI user can do, the agent could do.
 
-### macOS
+Now the watcher, which already holds the credentials, exposes the investigation
+as typed, read-only operations. The agent gets a scoped watcher key. The domain
+knowledge moved into the schemas, the tool descriptions and the MCP server
+instructions.
+
+### Same product, two kinds of client
+
+```
+   Human                                   AI agent (Claude Code, Cursor, Codex…)
+     │                                        │
+ curl · Grafana · Checkly                  MCP (/mcp)  ·  REST (/v1, /openapi.json)
+     │                                        │   scoped keys · audit log · rate limits
+ legacy /usage /status /metrics               │
+     └──────────────┬─────────────────────────┘
+                    ▼
+        internal/api — 6 operations, one catalog, one error model
+                    │
+        internal/snapshot — cached reading, guarded refresh ◄── 15-min worker ──► Prometheus
+                    │
+        internal/freetier — domain rules (quota families, verdicts, projection)
+                    │
+        internal/source — OCI SDK (read-only)  |  fixture scenarios (demo, tests, evals)
+```
+
+REST and MCP are thin adapters over the same `internal/api` operations. A
+parity test fails if they ever answer differently. The legacy endpoints that
+Checkly asserts on keep their exact JSON, pinned by golden-file contract tests
+written before the refactor.
+
+### Design choices that matter to an agent
+
+- **Unknown is a value.** A failed OCI source used to become `0 %` and
+  `status: OK`. Now it is `available: false`, and the verdict degrades to
+  `UNKNOWN`. A known `CRITICAL` is never hidden by a missing value.
+- **Values are discoverable.** Quota IDs, metrics, resolutions and verdicts are
+  enums in the schemas, generated from the same Go types for MCP and OpenAPI.
+  Unknown query parameters are rejected, so a typo can't silently widen a
+  filter.
+- **Errors are actionable.** Every error carries a stable `code`, `field`,
+  `hint`, `retryable`, `retryAfterSeconds` and `requiredScope`. Example:
+  `out_of_range` with the earliest allowed start.
+- **Responses suggest the next step.** Each response includes `meta`
+  (`dataSource`, `scope`, `observedAt`, `snapshotAgeSeconds`, `complete`,
+  `requestId`) and `nextSteps`.
+- **Sizes fit a model's context.** Timelines are capped at 720 points; the
+  summaries (peaks, drop intervals) come back even with `includePoints=false`.
+
+### Evals
+
+`evals/` holds 11 product tasks as data:
+
+- status on a normal day and with missing data;
+- billing risk, safe and at risk;
+- the 17/09 incident;
+- a window beyond retention;
+- capacity;
+- an ambiguous bucket name;
+- a broken watcher;
+- a missing permission;
+- a destructive request built on a false premise.
+
+Each case gives the agent a prompt and asks for a small JSON answer contract.
+Grading covers the outcome (for example, `cause == ingress_throttle`,
+`egressGB is null` when it can't be known, a crossing date within ±1 day) and
+the behaviour, read from the **server's audit log**:
+
+- it queried a window covering 15:14–15:20 UTC;
+- it made no mutating calls;
+- it didn't retry a denied refresh in a loop.
 
 ```bash
-brew install go
+go run ./evals                                   # scripted: reference must pass, adversarial must fail (CI)
+go run ./evals -runner claude-code -model sonnet  # a real agent with only the watcher's tools
 ```
 
-### Linux (Ubuntu/Debian)
+The scripted runner proves the graders catch regressions. Every case ships
+trajectories that are wrong on purpose: blaming CPU, forgetting the timezone,
+answering "0" for unknown egress, picking one of two matching buckets. The
+graders must reject every one of them. The Claude Code runner uses an empty
+working directory, `--tools ""` and `--strict-mcp-config`, so whatever the agent
+solves, it solved through the product's interface.
+Latest real-agent runs (2026-09-25): **Sonnet 11/11** ($0.58 for the suite) and
+**Haiku 10/11** (it read the per-minute drop peak as the burst total). Reports
+are in `evals/baselines/` and the analysis is in
+[the portfolio review](docs/agent-portfolio-review.md#evals).
+
+### Observability
+
+Every `/v1` and MCP call leaves one audit event with:
+
+- client, transport, MCP session and request ID;
+- operation and arguments;
+- outcome and error code;
+- duration, data source and what it changed.
+
+Events go to the JSON logs, to an in-memory ring (`GET /v1/audit`, scope
+`audit`) and to Prometheus (`watcher_requests_total`,
+`watcher_request_duration_seconds`). This answers "what did the agent do?",
+"why did it fail?" and "what did it modify?". The last answer is always "the
+snapshot, or nothing".
+
+### Security model
+
+- **Read-only against OCI by construction.** Only `List*`, `Get*` and
+  `SummarizeMetricsData`, and no tool can change the tenancy.
+- **Named clients with scopes.** `API_CLIENTS=name:read+refresh:key`, keys
+  compared as SHA-256 digests in constant time. The legacy `API_KEY` maps to a
+  read-only client, so Checkly needed no change.
+- **`/v1` and `/mcp` fail closed.** Without configured clients they reject every
+  request. `AUTH_MODE=disabled` is refused unless the data source is a synthetic
+  fixture.
+- **Guards that protect OCI:**
+  - timeline calls are rate-limited per client (20/min);
+  - refresh has a cooldown and coalesces concurrent callers;
+  - every OCI call has a timeout;
+  - raw OCI error text (OCIDs, request IDs) goes to the logs, never to clients.
+
+### Examples
+
+- [Investigate why the checks timed out at 17:14 on 17 September](examples/agent-workflows/01-investigate-incident.md) — read-only investigation
+- [Will I be billed this month, and can I host one more service?](examples/agent-workflows/02-billing-and-capacity.md) — multi-step
+- [Add a Checkly alert for OCI throttle drops](examples/agent-workflows/03-add-throttle-drops-check.md) — a state-changing workflow behind a preview and a human gate
+
+## Quick start (demo, no OCI account needed)
 
 ```bash
-sudo apt update
-sudo apt install golang-go
+docker compose up            # synthetic reconstruction of the 17/09 incident on :8088
+
+curl -H "Authorization: Bearer demo-agent-key" localhost:8088/v1/status
+curl localhost:8088/openapi.json
+
+# Connect Claude Code (the repo also ships a .mcp.json with the same settings)
+claude mcp add --transport http oci-watcher http://localhost:8088/mcp \
+  --header "Authorization: Bearer demo-agent-key"
 ```
 
-### Oracle Linux / RHEL
+Other scenarios: `FIXTURE_SCENARIO=quiet|egress-at-risk|egress-unavailable|not-configured docker compose up`.
+Every scenario is synthetic and says so in `meta.dataSource`.
+
+Cursor and other MCP clients use the same URL and header (Cursor:
+`.cursor/mcp.json` with `url` and `headers`). Only the Claude Code path is
+tested here.
+
+## Running against a real tenancy
+
+| Variable | Purpose |
+|---|---|
+| `OCI_TENANCY_ID`, `OCI_USER_ID`, `OCI_FINGERPRINT`, `OCI_PRIVATE_KEY_PATH`, `OCI_REGION` | OCI API signing key (OCI Console → Profile → API Keys). Give that user a read-only policy. |
+| `OCI_COMPARTMENT_ID` | Compartment to measure (default: the tenancy root). Child compartments are **not** included. |
+| `API_CLIENTS` | `name:scope+scope:key,...` with the scopes `read`, `refresh` and `audit` |
+| `API_KEY` | Legacy single key: the client `legacy` with `read` |
+| `METRICS_INTERVAL` | Snapshot refresh interval (default `15m`) |
+| `REFRESH_COOLDOWN` | Minimum time between externally requested refreshes (default `1m`) |
+| `DATA_SOURCE` | `oci` (default) or `fixture` (+ `FIXTURE_SCENARIO`) |
 
 ```bash
-sudo dnf install golang
+cp .env.example .env && $EDITOR .env
+docker compose --profile oci up oracle-watcher      # or: go run .
 ```
 
-## Setup del proyecto
+Production runs on the same VM through Coolify (the Dockerfile). A push to
+`main` builds an arm64 image in GitHub Actions, gated by the tests and the
+scripted evals, and triggers the deploy. See [QUICKSTART.md](QUICKSTART.md).
+
+### Endpoints
+
+| Endpoint | Auth | Notes |
+|---|---|---|
+| `GET /v1/status`, `/v1/quotas`, `/v1/billing-risk`, `/v1/saturation`, `/v1/diagnostics` | `read` | Served from the cached snapshot; the timeline reads OCI live |
+| `POST /v1/snapshot/refresh` | `refresh` | Re-reads OCI; cooldown and coalescing |
+| `GET /v1/audit` | `audit` | What each client did |
+| `POST /mcp` | any valid key | Streamable HTTP MCP, stateless |
+| `GET /openapi.json` | public | OpenAPI 3.1, generated from the code |
+| `GET /usage`, `/status`, `/limits` | legacy key or `read` | Legacy JSON, frozen for Checkly; reads OCI live |
+| `GET /health`, `/metrics` | public | Liveness; Prometheus for Alloy → Grafana ([guide](GRAFANA_GUIDE.md)) |
+
+### What the status means
+
+`status` covers **accruing quota only**:
+
+| Status | Accruing quota |
+|---|---|
+| `OK` | < 60 % |
+| `ATTENTION` | 60–80 % |
+| `WARNING` | 80–90 % |
+| `CRITICAL` | ≥ 90 % |
+| `UNKNOWN` (`/v1` only) | Everything known is OK but an accruing quota could not be read |
+
+Egress warns at 50 % (10 TB goes fast when something runs away); the other
+accruing quotas warn at 80 %. The allocation of OCPUs, RAM and disk is published
+as `allocationPercentage`, and at 100 % that is the point.
+
+### The real safety net
+
+Keep an OCI **budget alert** at $1 with a 1 % actual rule and a forecast rule.
+The watcher tells you *before* a quota bills; the budget alert tells you if
+anything at all did.
+
+## Development
 
 ```bash
-# Clonar el repo
-git clone https://github.com/RadW2020/oracle-free-tier-arm-watcher.git
-cd oracleFreeTierWatcher
-
-# Descargar dependencias
-go mod tidy
-
-# Compilar
-go build -o watcher .
-
-# Ejecutar
-./watcher
+go vet ./... && go test -race ./...     # unit, integration, legacy contracts, MCP/REST parity
+go run ./evals                          # scripted evals
 ```
 
-## Configuración
-
-1. Crea el archivo `.env` basándote en `.env.example`:
-
-```bash
-cp .env.example .env
-```
-
-2. Configura tus credenciales de OCI:
-   - Ve a **OCI Console → Profile → API Keys**
-   - Genera una nueva API Key y descarga el archivo `.pem`
-   - Copia los valores a tu `.env`
-
-```env
-PORT=8088
-
-# API Key para proteger los endpoints (recomendado)
-API_KEY=$(openssl rand -hex 32)
-
-OCI_TENANCY_ID=ocid1.tenancy.oc1..xxxxx
-OCI_USER_ID=ocid1.user.oc1..xxxxx
-OCI_FINGERPRINT=xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx
-OCI_PRIVATE_KEY_PATH=/path/to/your/oci_api_key.pem
-OCI_REGION=eu-madrid-1
-OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxxxx
-```
-
-### 🔒 Seguridad
-
-Si configuras `API_KEY`, **todos los endpoints (excepto `/health`) requerirán autenticación**:
-
-```bash
-# Sin API Key (público)
-curl http://localhost:8088/usage
-
-# Con API Key
-curl -H "X-API-Key: tu-clave-secreta" http://localhost:8088/usage
-```
-
-## Ejemplo de respuesta `/usage`
-
-```json
-{
-  "status": "OK",
-  "maxUsagePercentage": 50,
-  "warnings": [],
-  "timestamp": "2024-12-29T16:30:00Z",
-  "configured": true,
-  "usage": {
-    "compute": {
-      "arm": {
-        "ocpus": { "used": 2, "limit": 4, "percentage": 50 },
-        "memoryGB": { "used": 12, "limit": 24, "percentage": 50 },
-        "instances": 1
-      },
-      "amd": {
-        "instances": { "used": 0, "limit": 2, "percentage": 0 }
-      }
-    },
-    "blockStorage": {
-      "total": { "used": 100, "limit": 200, "percentage": 50 }
-    },
-    "objectStorage": {
-      "total": { "used": 2.5, "limit": 10, "percentage": 25 }
-    },
-    "loadBalancer": {
-      "count": { "used": 0, "limit": 1, "percentage": 0 }
-    }
-  }
-}
-```
-
-## Estados posibles
-
-| Status      | Significado      |
-| ----------- | ---------------- |
-| `OK`        | Uso < 60%        |
-| `ATTENTION` | Uso entre 60-80% |
-| `WARNING`   | Uso entre 80-90% |
-| `CRITICAL`  | Uso > 90%        |
-
-## Free Tier Limits (Always Free)
-
-- **Compute ARM (Ampere A1)**: 4 OCPUs, 24GB RAM
-- **Compute AMD**: 2 instancias micro
-- **Block Storage**: 200GB total
-- **Object Storage**: 10GB
-- **Load Balancer**: 1 instancia (10 Mbps)
-- **Bandwidth**: 10TB/mes egress
-
-## Despliegue en Oracle Cloud
-
-```bash
-# En tu máquina local, compilar para Linux:
-GOOS=linux GOARCH=arm64 go build -o watcher .
-
-# Copiar al servidor:
-scp watcher ubuntu@tu-servidor:/home/ubuntu/
-
-# En el servidor:
-chmod +x watcher
-./watcher
-```
-
-### Ejecutar como servicio (systemd)
-
-Crear `/etc/systemd/system/oracle-watcher.service`:
-
-```ini
-[Unit]
-Description=Oracle Free Tier Watcher
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu
-ExecStart=/home/ubuntu/watcher
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl enable oracle-watcher
-sudo systemctl start oracle-watcher
-```
-
-### 🚀 Despliegue en Producción con Coolify
-
-Para despliegue automático en tu Oracle Free Tier instance:
-
-👉 **[Ver guía completa en QUICKSTART.md](QUICKSTART.md)**
-
-**Instalación rápida:**
-
-```bash
-# En tu instancia Oracle
-curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
-```
-
-Coolify te da:
-
-- ⚡ Deploy en 30 segundos tras cada `git push`
-- 🖥️ UI web intuitiva
-- 🔐 SSL automático
-- 📊 Logs en tiempo real
-- 🔄 Rollback fácil
-
-**Flujo automático:**
-
-```
-git push → GitHub Actions → Webhook → Coolify → Deploy ✅
-```
-
-## Aprendiendo Go
-
-### Conceptos clave en este proyecto:
-
-1. **Packages** - Todo código Go pertenece a un paquete
-2. **Structs** - Como clases pero sin herencia
-3. **Interfaces** - Definen comportamiento (implícitas)
-4. **Error handling** - Errores como valores, no excepciones
-5. **HTTP Server** - Librería estándar muy potente
-6. **JSON tags** - Controlan serialización
-7. **Goroutines** - Concurrencia nativa (llamadas paralelas a OCI)
-8. **Channels** - Comunicación entre goroutines
-9. **Middleware** - Patrón para autenticación HTTP
-
-## 📚 Documentación de Referencia
-
-- [🚀 Quick Start Guide](./QUICKSTART.md) - Instalación rápida en 5 minutos.
-- [🔒 Security Guide](./SECURITY.md) - Mejores prácticas y rotación de claves.
-- [📊 Grafana Guide](./GRAFANA_GUIDE.md) - Configuración de monitoreo en Grafana Cloud.
-- [📜 Changelog](./CHANGELOG.md) - Historial de mejoras.
-
----
-
-## 🚀 Configuración de la Instancia (¡IMPORTANTE!)
-
-Para aprovechar al máximo la Free Tier y que este monitor tenga sentido, asegúrate de configurar tu instancia en Oracle Cloud de la siguiente manera:
-
-- **Imagen:** Oracle Linux o Ubuntu (ambas funcionan bien con Go/Docker/Coolify).
-- **Shape:** Debes seleccionar **`VM.Standard.A1.Flex`** (procesador Ampere ARM).
-- **Recursos:** Configúralo con **4 OCPUs** y **24 GB de RAM**. Esta es la configuración máxima gratuita.
-- **Región:** Asegúrate de crearla en tu **Home Region** (la que elegiste al registrarte), de lo contrario te cobrarán.
-
-> **Nota:** Si eliges las instancias AMD (Micro), solo tendrás 1GB de RAM y 0.25 OCPU, lo cual es insuficiente para correr Coolify cómodamente.
-
-## 🛡️ Red de Seguridad (Configuración en OCI)
-
-Aunque este monitor es fiable, la red de seguridad definitiva es configurar una **Alerta de Presupuesto** en la consola de Oracle:
-
-1. Ve a **Billing & Cost Management → Budgets**.
-2. Crea un presupuesto (Create Budget).
-3. Ponle un nombre (ej. "Seguridad Free Tier").
-4. **Target Amount:** 1.00 (el mínimo).
-5. Configura una regla de alerta (Threshold Rule):
-   - **Threshold:** 0.01 (1% del presupuesto).
-   - **Type:** Actual (o Forecasted para que te avise antes).
-   - **Email:** Tu dirección.
-
-_Si por algún error cualquier cosa te gasta 0,01€, Oracle te enviará un email inmediatamente._
-
-## ✅ Mejoras Implementadas
-
-- [x] **🔒 Autenticación con API Key:** Protege los endpoints con `X-API-Key` header
-- [x] **📊 Logging estructurado:** Logs en JSON con zerolog para mejor observabilidad
-- [x] **⚡ Llamadas paralelas a OCI:** Uso de goroutines para reducir tiempo de respuesta
-- [x] **✔️ Validación de credenciales:** Verifica que `.env` esté correctamente configurado al iniciar
-- [x] **📝 Puerto normalizado:** Puerto 8088 por defecto consistente en todo el proyecto
-- [x] **✅ Monitoreo de IPs públicas:** Ya incluido en los endpoints
-
-## 📋 Próximos Pasos / TODO
-
-- [ ] **Configuración Instancia:** Asegurarse de elegir el Shape **`VM.Standard.A1.Flex`** (ARM Ampere) con 4 OCPUs y 24GB RAM.
-- [ ] **Despliegue con Coolify:** Seguir [QUICKSTART.md](QUICKSTART.md) para setup completo
-- [ ] Instalar Go (`brew install go`) y compilar localmente para probar.
-- [ ] Configurar `.env` con las credenciales reales de OCI.
-- [ ] **Añadir alertas automáticas:** Integrar notificaciones (Discord/Telegram o Email vía SMTP) si el uso pasa del 80%.
-- [ ] **Gráfico de uso:** Endpoint opcional para generar una pequeña tabla o gráfico en ASCII/HTML.
-- [ ] **Health Check de instancia:** Si el script detecta uso de CPU < 15%, avisar que la instancia corre riesgo de ser borrada por Oracle.
-- [x] **Métricas Prometheus:** Exponer métricas para integración con Grafana
+- [AGENTS.md](AGENTS.md): invariants, dangerous operations and conventions, for
+  coding agents and for humans.
+- [docs/](docs/): the agent-readiness review, the use cases, the plan and a
+  critical portfolio review.
+- [checkly/README.md](checkly/README.md): the monitoring-as-code half.
+- [POSTMORTEM-2026-09-17.md](POSTMORTEM-2026-09-17.md) and
+  [CHANGELOG.md](CHANGELOG.md).

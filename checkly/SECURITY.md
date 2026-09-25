@@ -38,7 +38,7 @@ Checkly supports environment variables that can be securely stored and reference
 
 | Variable Name            | Description                                      | Used In                   |
 | ------------------------ | ------------------------------------------------ | ------------------------- |
-| `ORACLE_MONITOR_API_KEY` | API key for Oracle Free Tier monitoring endpoint | `oracle-monitor.check.ts` |
+| `ORACLE_MONITOR_API_KEY` | API key for Oracle Free Tier monitoring endpoint | `src/oci/*.check.ts` |
 
 ### 🔄 Rotating API Keys
 

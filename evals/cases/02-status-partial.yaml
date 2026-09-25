@@ -1,0 +1,29 @@
+id: status-partial
+useCase: UC1
+title: Missing data is reported as unknown, not as zero
+scenario: egress-unavailable
+prompt: |
+  Quick check before I go to bed: is my Oracle free tier fine? How much egress have I used this month?
+answer:
+  status: "the watcher's overall status"
+  egressGBThisMonth: "month-to-date egress in GB, as a number"
+  unknownSignals: "list of the data sources or quotas whose values could not be read"
+expect:
+  - {answer: status, equals: UNKNOWN}
+  - {answer: egressGBThisMonth, isNull: true}
+  - {answer: unknownSignals, containsAny: [bandwidth, egress]}
+  - {called: get_free_tier_status}
+reference:
+  calls:
+    - {tool: get_free_tier_status}
+    - {tool: get_watcher_diagnostics}
+  answer: {status: UNKNOWN, egressGBThisMonth: null, unknownSignals: [bandwidth]}
+adversarial:
+  - name: reports-zero-egress
+    calls:
+      - {tool: get_free_tier_status}
+    answer: {status: OK, egressGBThisMonth: 0, unknownSignals: []}
+  - name: invents-a-plausible-number
+    calls:
+      - {tool: get_free_tier_status}
+    answer: {status: UNKNOWN, egressGBThisMonth: 207, unknownSignals: [bandwidth]}

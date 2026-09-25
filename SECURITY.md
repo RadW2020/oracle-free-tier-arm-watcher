@@ -32,9 +32,27 @@ API_KEY=abc123...  # Tu clave generada
 Si `API_KEY` está configurada:
 
 - ✅ `/health` - **Público** (para health checks de Docker/Kubernetes)
+- ✅ `/metrics` - **Público** (lo rasca Alloy en localhost; incluye nombres de buckets como etiqueta)
+- ✅ `/openapi.json` - **Público** (documentación, sin datos)
 - 🔒 `/usage` - **Protegido** (requiere `X-API-Key`)
 - 🔒 `/status` - **Protegido** (requiere `X-API-Key`)
 - 🔒 `/limits` - **Protegido** (requiere `X-API-Key`)
+
+La API para agentes (`/v1/*` y `/mcp`) **siempre** exige clave, aunque no haya
+`API_KEY`: sin clientes configurados rechaza todo. Cada cliente de
+`API_CLIENTS` tiene nombre y permisos (`read`, `refresh`, `audit`), y cada
+llamada queda en el registro de auditoría (`GET /v1/audit`, log JSON).
+
+### 2b. Qué puede hacer un agente
+
+Nada que cambie la tenancy: el watcher sólo llama a `List*`, `Get*` y
+`SummarizeMetricsData`. Lo único que un agente puede provocar es un refresh de
+la lectura guardada (permiso `refresh`, con cooldown). **Nunca le des a un
+agente el `.env`**: la clave de firma de OCI puede lo que pueda ese usuario en
+la tenancy. Para él basta una clave de `API_CLIENTS`.
+
+Política de OCI recomendada para el usuario del watcher (sólo lectura; por
+verificar contra la tenancy): `Allow group oci-watcher to read all-resources in tenancy`.
 
 ### 3. Ejemplo de uso con autenticación
 

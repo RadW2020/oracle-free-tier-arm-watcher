@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "oci-watcher": {
+      "type": "http",
+      "url": "${WATCHER_URL:-http://localhost:8088}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${WATCHER_AGENT_KEY:-demo-agent-key}"
+      }
+    }
+  }
+}

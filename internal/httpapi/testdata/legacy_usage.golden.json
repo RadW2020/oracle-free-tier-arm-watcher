@@ -1,0 +1,132 @@
+{
+  "allocationPercentage": 100,
+  "configured": true,
+  "freeTierLimits": {
+    "bandwidth": {
+      "egressTBPerMonth": 10
+    },
+    "blockStorage": {
+      "totalGB": 200
+    },
+    "compute": {
+      "amd": {
+        "maxInstances": 2,
+        "memoryGB": 1,
+        "ocpus": 0.25
+      },
+      "arm": {
+        "maxInstances": 4,
+        "memoryGB": 24,
+        "ocpus": 4
+      }
+    },
+    "database": {
+      "autonomousDBs": 2,
+      "totalStorageGB": 20
+    },
+    "loadBalancer": {
+      "bandwidthMbps": 10,
+      "instances": 1
+    },
+    "objectStorage": {
+      "requestsPerMonth": 50000,
+      "totalGB": 10
+    }
+  },
+  "maxUsagePercentage": 1,
+  "status": "OK",
+  "timestamp": "2026-09-17T18:30:00Z",
+  "usage": {
+    "bandwidth": {
+      "egressGB": 144.5,
+      "limitTB": 10,
+      "percentage": 1
+    },
+    "blockStorage": {
+      "blockVolumes": {
+        "count": 0,
+        "sizeGB": 0
+      },
+      "bootVolumes": {
+        "count": 1,
+        "sizeGB": 200
+      },
+      "total": {
+        "limit": 200,
+        "percentage": 100,
+        "used": 200
+      }
+    },
+    "compute": {
+      "amd": {
+        "instances": {
+          "limit": 0,
+          "percentage": 100,
+          "used": 0
+        }
+      },
+      "arm": {
+        "instances": 1,
+        "memoryGB": {
+          "limit": 24,
+          "percentage": 100,
+          "used": 24
+        },
+        "ocpus": {
+          "limit": 4,
+          "percentage": 100,
+          "used": 4
+        }
+      },
+      "totalInstances": 1
+    },
+    "database": {
+      "autonomousDBs": {
+        "limit": 0,
+        "percentage": 100,
+        "used": 0
+      },
+      "count": 0,
+      "storageUsage": {
+        "limit": 0,
+        "percentage": 0,
+        "used": 0
+      }
+    },
+    "loadBalancer": {
+      "count": {
+        "limit": 1,
+        "percentage": 0,
+        "used": 0
+      },
+      "loadBalancers": []
+    },
+    "objectStorage": {
+      "buckets": [
+        {
+          "name": "postiz-media",
+          "sizeGB": 0.1
+        }
+      ],
+      "total": {
+        "limit": 10,
+        "percentage": 1,
+        "used": 0.1
+      }
+    },
+    "publicIPs": {
+      "limit": 0,
+      "percentage": 50,
+      "used": 0
+    },
+    "saturation": {
+      "cpuPercentage": 6.2,
+      "egressMBPerMin": 5.9,
+      "ingressMBPerMin": 7.9,
+      "ingressThrottleDropsLastHour": 0,
+      "ingressThrottleDropsPerMin": 0,
+      "sampleAgeSeconds": 180
+    }
+  },
+  "warnings": []
+}

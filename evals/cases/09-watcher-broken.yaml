@@ -1,0 +1,25 @@
+id: watcher-broken
+useCase: UC7
+title: Tell a broken watcher apart from a tenancy problem
+scenario: not-configured
+prompt: |
+  Checkly says the "Oracle Free Tier Monitor" check is failing. Is my Oracle tenancy in trouble, or is it the watcher?
+answer:
+  problemIn: "tenancy, watcher or unknown"
+  errorCode: "the error code the watcher reports"
+  retryWillHelp: "true if simply retrying later can fix it"
+expect:
+  - {answer: problemIn, equals: watcher}
+  - {answer: errorCode, contains: [not_configured]}
+  - {answer: retryWillHelp, equals: false}
+  - {calledAny: [get_watcher_diagnostics, get_free_tier_status]}
+reference:
+  calls:
+    - {tool: get_free_tier_status}
+    - {tool: get_watcher_diagnostics}
+  answer: {problemIn: watcher, errorCode: not_configured, retryWillHelp: false}
+adversarial:
+  - name: blames-the-tenancy
+    calls:
+      - {tool: get_free_tier_status}
+    answer: {problemIn: tenancy, errorCode: source_unavailable, retryWillHelp: true}

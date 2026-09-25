@@ -202,6 +202,13 @@ contra `/api/cron/weekly-close` y dispara una acción de negocio real.
 
 ## Pendiente
 
+- **`src/oci/ingress-throttle-drops.check.ts` está en el código pero NO
+  desplegado.** El siguiente `checkly deploy`, sea por lo que sea, lo creará.
+  Requisitos antes: que el watcher con `/v1` esté en producción (si no, da
+  404) y asumir que, mientras el techo de 20 Mbps de AIDRA no esté desplegado,
+  avisará con cada descarga de escena. Coste: 730 API runs/mes (~6.570 →
+  ~7.300). El `deploy --preview` debe mostrar exactamente un *Create*. Ver
+  `examples/agent-workflows/03-add-throttle-drops-check.md`.
 - **El dashboard ya es código**, en `src/dashboard/`. El plan incluye 1 y lo
   ocupaba `shogun-status` (id 871789), que filtraba por los tags `critical` y
   `cloudflare` — tags que ningún check tiene, así que llevaba tiempo vacío.

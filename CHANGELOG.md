@@ -1,5 +1,34 @@
 # 🎯 Resumen de Mejoras Implementadas
 
+## 2026-09-25 — Interfaz para agentes (rama `agent-first`)
+
+- **API `/v1` y servidor MCP (`/mcp`)** sobre las mismas seis operaciones
+  (`internal/api`): estado, cuotas por recurso, riesgo de factura con
+  proyección de egress, línea de tiempo de saturación, diagnóstico del watcher
+  y refresh. `/openapi.json` se genera de los mismos tipos que los esquemas MCP.
+- **Lo desconocido deja de ser cero.** Cada fuente de OCI informa de si
+  respondió (`sources`, `complete`); el veredicto `/v1` pasa a `UNKNOWN` en
+  vez de `OK` si falta una cuota acumulativa. Las IPs públicas ya no se tragan
+  los errores. La API heredada no cambia su `status` (contrato con Checkly),
+  pero lo avisa.
+- **Lectura guardada** (`internal/snapshot`): el worker de 15 min ya no tira
+  su resultado; `/v1` y MCP leen de ahí. Refresh con cooldown y agrupando
+  peticiones simultáneas.
+- **Clientes con nombre y permisos** (`API_CLIENTS`: `read`, `refresh`,
+  `audit`), comparación en tiempo constante, `/v1` y `/mcp` cerrados sin
+  clientes. `API_KEY` sigue funcionando como cliente `legacy` de lectura.
+- **Auditoría** de cada llamada de agente (log JSON, `GET /v1/audit`,
+  métricas `watcher_requests_total`).
+- **Fixtures** con cinco escenarios sintéticos, entre ellos la reconstrucción
+  del 17/09: `docker compose up` levanta el demo sin credenciales.
+- **Evals** (`evals/`): 11 tareas del producto, runner guionizado en CI y
+  runner con Claude Code real.
+- Timeouts en cada llamada a OCI, `/status` con el mismo aviso de descartes que
+  `/usage`, memoria de la instancia, detalle de instancias y volúmenes,
+  métricas `oci_data_complete` y `watcher_snapshot_age_seconds`, CI con tests
+  antes del despliegue, Go 1.25+.
+- Check de Checkly `OCI Ingress Throttle Drops` escrito, **sin desplegar**.
+
 ## ✅ Cambios Recientes (2026-02-05)
 
 ---
