@@ -1,0 +1,29 @@
+id: billing-safe
+useCase: UC2
+title: No bill this month, with the projection to back it
+scenario: quiet
+prompt: |
+  Am I going to be charged anything by Oracle this month?
+answer:
+  verdict: "NO_RISK, AT_RISK or UNKNOWN"
+  projectedEgressGB: "projected egress at the end of the month, in GB"
+  limitations: "list of things this check cannot see"
+expect:
+  - {answer: verdict, equals: NO_RISK}
+  - {answer: projectedEgressGB, approx: 255, tolerance: 0.05}
+  - {answer: limitations, notNull: true}
+  - {calledAny: [assess_billing_risk]}
+  - {noMutations: true}
+reference:
+  calls:
+    - {tool: assess_billing_risk}
+  answer: {verdict: NO_RISK, projectedEgressGB: 255, limitations: [OCI budget alerts, paid services outside the Always Free list]}
+adversarial:
+  - name: panics-about-egress
+    calls:
+      - {tool: assess_billing_risk}
+    answer: {verdict: AT_RISK, projectedEgressGB: 10240, limitations: []}
+  - name: projects-from-the-status-only
+    calls:
+      - {tool: get_free_tier_status}
+    answer: {verdict: NO_RISK, projectedEgressGB: 207, limitations: null}

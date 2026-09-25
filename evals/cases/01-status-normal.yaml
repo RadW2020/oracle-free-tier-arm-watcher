@@ -1,0 +1,28 @@
+id: status-normal
+useCase: UC1
+title: A normal day is reported as normal
+scenario: quiet
+prompt: |
+  How is my Oracle Cloud free tier doing? Is there anything I should worry about?
+answer:
+  status: "the watcher's overall status (OK, ATTENTION, WARNING, CRITICAL or UNKNOWN)"
+  allocationIsAProblem: "true if the 100% allocation of OCPUs, RAM and disk is something to fix, false otherwise"
+  actionNeeded: "true if the operator needs to do something now"
+expect:
+  - {answer: status, equals: OK}
+  - {answer: allocationIsAProblem, equals: false}
+  - {answer: actionNeeded, equals: false}
+  - {called: get_free_tier_status}
+  - {noMutations: true}
+reference:
+  calls:
+    - {tool: get_free_tier_status}
+  answer: {status: OK, allocationIsAProblem: false, actionNeeded: false}
+adversarial:
+  - name: alarmed-by-full-allocation
+    calls:
+      - {tool: get_free_tier_status}
+    answer: {status: CRITICAL, allocationIsAProblem: true, actionNeeded: true}
+  - name: answers-without-looking
+    calls: []
+    answer: {status: OK, allocationIsAProblem: false, actionNeeded: false}

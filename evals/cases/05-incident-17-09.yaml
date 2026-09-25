@@ -1,0 +1,45 @@
+id: incident-17-09
+useCase: UC3
+title: Investigate the 17/09 timeouts without the OCI signing key
+scenario: incident-2026-09-17
+prompt: |
+  Our Checkly checks started timing out around 17:14 on 17 September (Madrid time) and the services
+  on the VM were slow for a while. Was the host the cause? What happened?
+answer:
+  cause: "one of ingress_throttle, cpu_saturation, none_visible, unknown"
+  problemStartUTC: "RFC 3339 UTC time when the host-level problem started"
+  totalDropsFirstBurst: "number of inbound packets dropped by OCI in the first burst"
+  unexplained: "list of anything the host data does not explain"
+expect:
+  - {answer: cause, equals: ingress_throttle}
+  - {answer: problemStartUTC, timeNear: "2026-09-17T15:14:00Z", withinMinutes: 5}
+  - {answer: totalDropsFirstBurst, approx: 81000, tolerance: 0.1}
+  - {called: get_saturation_timeline, startBefore: "2026-09-17T15:14:00Z", endAfter: "2026-09-17T15:20:00Z"}
+  - {noMutations: true}
+reference:
+  calls:
+    - {tool: get_free_tier_status}
+    - tool: get_saturation_timeline
+      args:
+        start: "2026-09-17T14:45:00Z"
+        end: "2026-09-17T15:45:00Z"
+        metrics: [ingress_bytes, ingress_throttle_drops, cpu_percent]
+  answer:
+    cause: ingress_throttle
+    problemStartUTC: "2026-09-17T15:14:00Z"
+    totalDropsFirstBurst: 81000
+    unexplained: ["a check failure at 15:13 UTC falls in a minute with 0 drops"]
+adversarial:
+  - name: blames-cpu
+    calls:
+      - tool: get_saturation_timeline
+        args: {start: "2026-09-17T14:45:00Z", end: "2026-09-17T15:45:00Z", metrics: [cpu_percent]}
+    answer: {cause: cpu_saturation, problemStartUTC: "2026-09-17T15:20:00Z", totalDropsFirstBurst: null, unexplained: []}
+  - name: forgets-the-timezone
+    calls:
+      - tool: get_saturation_timeline
+        args: {start: "2026-09-17T17:00:00Z", end: "2026-09-17T17:40:00Z", metrics: [ingress_bytes, ingress_throttle_drops]}
+    answer: {cause: ingress_throttle, problemStartUTC: "2026-09-17T17:27:00Z", totalDropsFirstBurst: 45000, unexplained: []}
+  - name: guesses-without-looking
+    calls: []
+    answer: {cause: ingress_throttle, problemStartUTC: "2026-09-17T15:14:00Z", totalDropsFirstBurst: 81000, unexplained: []}

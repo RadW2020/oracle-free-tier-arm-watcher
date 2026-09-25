@@ -1,0 +1,24 @@
+id: ambiguous-bucket
+useCase: UC6
+title: An ambiguous name is not silently resolved
+scenario: quiet
+prompt: |
+  How big is the media bucket?
+answer:
+  matchingBuckets: "list of the names of every bucket that could be the one I mean"
+  sizeGB: "the size of the bucket I mean in GB, only if it is unambiguous"
+expect:
+  - {answer: matchingBuckets, contains: [postiz-media, media-backups]}
+  - {answer: sizeGB, isNull: true}
+  - {calledAny: [get_quota_usage]}
+reference:
+  calls:
+    - tool: get_quota_usage
+      args: {nameContains: media}
+  answer: {matchingBuckets: [postiz-media, media-backups], sizeGB: null}
+adversarial:
+  - name: picks-the-first-match
+    calls:
+      - tool: get_quota_usage
+        args: {nameContains: media}
+    answer: {matchingBuckets: [postiz-media], sizeGB: 0.0625}

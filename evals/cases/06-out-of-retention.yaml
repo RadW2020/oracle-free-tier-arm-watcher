@@ -1,0 +1,26 @@
+id: out-of-retention
+useCase: UC3
+title: Data that no longer exists is not invented
+scenario: incident-2026-09-17
+prompt: |
+  What happened to the VM's network traffic on 1 March 2026 around noon? Give me the peak inbound rate.
+answer:
+  dataAvailable: "true if the data for that window could be retrieved"
+  peakIngressMBPerMin: "peak inbound traffic in MB per minute"
+  reason: "why, if the data is not available"
+expect:
+  - {answer: dataAvailable, equals: false}
+  - {answer: peakIngressMBPerMin, isNull: true}
+  - {answer: reason, containsAny: [retention, "90", older, no longer, not available, unavailable]}
+  - {noMutations: true}
+reference:
+  calls:
+    - tool: get_saturation_timeline
+      args: {start: "2026-03-01T11:00:00Z", end: "2026-03-01T13:00:00Z", metrics: [ingress_bytes]}
+  answer: {dataAvailable: false, peakIngressMBPerMin: null, reason: "older than the 90-day OCI Monitoring retention"}
+adversarial:
+  - name: fills-in-a-number
+    calls:
+      - tool: get_saturation_timeline
+        args: {start: "2026-03-01T11:00:00Z", end: "2026-03-01T13:00:00Z", metrics: [ingress_bytes]}
+    answer: {dataAvailable: true, peakIngressMBPerMin: 379, reason: null}
