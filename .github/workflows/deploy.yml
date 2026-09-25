@@ -10,7 +10,30 @@ env:
   IMAGE_NAME: radw2020/oracle-free-tier-arm-watcher
 
 jobs:
+  # Nada se construye ni se despliega si fallan los tests, los contratos de
+  # la API heredada (lo que asierta Checkly) o las evals guionizadas.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Tests (unit, integration, contracts)
+        run: go test -race ./...
+
+      - name: Scripted evals
+        run: go run ./evals -out ""
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,6 +63,8 @@ jobs:
           push: true
           # Solo ARM64 para Oracle Free Tier (Ampere A1).
           platforms: linux/arm64
+          build-args: |
+            VERSION=${{ github.sha }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,7 +1,35 @@
-version: '3.8'
+# `docker compose up` levanta el DEMO: el watcher con un escenario sintético
+# (la reconstrucción del incidente del 17/09/2026) y dos claves de ejemplo.
+# No necesita credenciales de OCI.
+#
+#   docker compose up
+#   curl -H "Authorization: Bearer demo-agent-key" localhost:8088/v1/status
+#   claude mcp add --transport http oci-watcher http://localhost:8088/mcp \
+#     --header "Authorization: Bearer demo-agent-key"
+#
+# Con la tenancy real (lee .env y monta la clave privada de OCI):
+#
+#   docker compose --profile oci up oracle-watcher
+#
+# Producción no usa este fichero: Coolify construye el Dockerfile.
 
 services:
+  watcher-demo:
+    build: .
+    container_name: oracle-watcher-demo
+    ports:
+      - "8088:8088"
+    environment:
+      DATA_SOURCE: fixture
+      # incident-2026-09-17 | quiet | egress-at-risk | egress-unavailable | not-configured
+      FIXTURE_SCENARIO: ${FIXTURE_SCENARIO:-incident-2026-09-17}
+      # Claves de demo, sólo válidas contra datos sintéticos:
+      #   demo-agent-key    lectura + refresh (lo que necesita un agente)
+      #   demo-operator-key lectura + refresh + audit (ver qué hizo el agente)
+      API_CLIENTS: demo-agent:read+refresh:demo-agent-key,demo-operator:read+refresh+audit:demo-operator-key
+
   oracle-watcher:
+    profiles: ["oci"]
     build: .
     container_name: oracle-watcher
     restart: always
@@ -11,5 +39,4 @@ services:
       - .env
     volumes:
       # Montamos la clave privada para que el contenedor pueda leerla
-      - ${OCI_PRIVATE_KEY_PATH}:/app/key.pem:ro
-
+      - ${OCI_PRIVATE_KEY_PATH:-./key.pem}:/app/key.pem:ro
