@@ -5,6 +5,7 @@ import { standardEscalation } from '../escalation'
 
 new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
   name: 'Oracle Free Tier Monitor',
+  description: 'Cuota, no latencia. Falla si el watcher no responde o si `/status` deja de traer `maxUsagePercentage`, que es el contrato del que dependen estos checks. Un aviso de degradación aquí sólo dice que `/status` tardó más de 15 s (llama a la API de OCI en cada run); no que el host esté lento.',
   request: {
     url: '{{ORACLE_MONITOR_URL}}/status',
     method: 'GET',
@@ -20,7 +21,13 @@ new ApiCheck('oracle-free-tier-monitor-lAoPm1wX', {
       AssertionBuilder.jsonBody('$.maxUsagePercentage').lessThan('101'),
     ],
   },
-  degradedResponseTime: 5000,
+  // 15 s y no 5, por lo mismo que los dos de bandwidth: este check vigila la
+  // cuota, no la latencia, y /status llama a OCI en cada run (p99 ~2,7 s en
+  // una semana normal). El 11/10/2026 una pérdida de paquetes en el camino
+  // hacia Madrid ralentizó todo el host 25 min y los checks de cuota mandaron
+  // avisos de degradación con el uso al 0 %. La lentitud del host ya la
+  // avisan los checks de servicio; aquí sólo confundía.
+  degradedResponseTime: 15000,
   maxResponseTime: 20000,
   activated: true,
   muted: false,

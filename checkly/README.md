@@ -22,7 +22,7 @@ checkly/
 ├── src/
 │   ├── alert-channels.ts      Canal de email → raul@uliber.com
 │   ├── groups.ts              Grupos Shogunito, AIDRA y Strong Core
-│   ├── oci/                   3 checks del Free Tier de Oracle
+│   ├── oci/                   4 checks del Free Tier de Oracle
 │   ├── shogunito/             4 API + 1 browser + 1 multistep (+ specs Playwright)
 │   ├── ciaobox/               1 API + 1 URL monitor + 1 heartbeat
 │   ├── aidra/                 2 API + 1 URL monitor
@@ -46,7 +46,7 @@ Las dos cosas se facturan distinto, y elegir mal sale caro:
   facturan **por unidad** (10 en el plan), no por ejecución. Su frecuencia
   es gratis.
 
-Presupuesto actual: **6.570 / 10.000 API runs al mes (66%)**, 61 / 1.000 browser
+Presupuesto actual: **~7.300 / 10.000 API runs al mes (73%)**, 61 / 1.000 browser
 runs y 5 / 10 uptime monitors. Las frecuencias están por tramos según lo que aporta sondear más a menudo,
 no todo al máximo:
 
@@ -54,6 +54,7 @@ no todo al máximo:
 |---|---|---|
 | 30 min | Shogunito API Health, Ciaobox Public Health, Strong Core Web | De Shogunito API Health dependen los demás checks de Shogunito; los otros dos son uptime monitors, así que su frecuencia es gratis |
 | 1 h | Shogunito Web UI, MinIO, AIDRA API Health, AIDRA Dashboard, Strong Core Historial y Auth Providers | Caída visible para un usuario |
+| 1 h | OCI Ingress Throttle Drops | Lee la lectura guardada en `/v1/status`, sin llamar a OCI: sondearlo a menudo no gasta la API que vigila la factura |
 | 2–3 h | AIDRA STAC, bandwidth WARNING y CRITICAL, infra multistep, Oracle Free Tier Monitor | Cambian despacio; el multistep cuesta el doble por ejecución, y el Free Tier Monitor llama a la API de OCI a través del servicio Go |
 | 6 h | Shogunito API Swagger JSON | Documentación estática: sondearla más es gastar cuota |
 
@@ -91,7 +92,7 @@ sea infalible.
 `sendDegraded: true` en el canal: los checks declaran `degradedResponseTime`,
 pero con el canal en `false` ese umbral no generaba ningún aviso.
 
-La escalación vive en `src/escalation.ts` y la usan los 18 checks, los 3
+La escalación vive en `src/escalation.ts` y la usan los 19 checks, los 3
 grupos y el default de la config. Estaba duplicada literalmente en 8 ficheros
 y con `amount: 0`, o sea un único email por incidencia: si ese correo se
 perdía, la incidencia se perdía. Ahora avisa al primer fallo y recuerda 2
@@ -202,13 +203,16 @@ contra `/api/cron/weekly-close` y dispara una acción de negocio real.
 
 ## Pendiente
 
-- **`src/oci/ingress-throttle-drops.check.ts` está en el código pero NO
-  desplegado.** El siguiente `checkly deploy`, sea por lo que sea, lo creará.
-  Requisitos antes: que el watcher con `/v1` esté en producción (si no, da
-  404) y asumir que, mientras el techo de 20 Mbps de AIDRA no esté desplegado,
-  avisará con cada descarga de escena. Coste: 730 API runs/mes (~6.570 →
-  ~7.300). El `deploy --preview` debe mostrar exactamente un *Create*. Ver
+- **`src/oci/ingress-throttle-drops.check.ts` está listo para desplegar.**
+  Requisitos comprobados el 11/10/2026: el watcher con `/v1` está en
+  producción y el techo de 20 Mbps de AIDRA también. El umbral es de 50.000
+  paquetes por hora y no `< 1`, porque OCI descarta algo casi a diario sin
+  impacto visible (el porqué, con datos, está en el propio check). El
+  `deploy --preview` muestra exactamente un *Create*. Ver
   `examples/agent-workflows/03-add-throttle-drops-check.md`.
+- **Los tres checks de cuota (`src/oci/`) degradan a 15 s, no a 5.** Vigilan
+  la cuota, no la latencia, y el 11/10/2026 un tirón de red mandó «Degradation
+  alert for OCI Bandwidth CRITICAL» con el egress al 0 %.
 - **El dashboard ya es código**, en `src/dashboard/`. El plan incluye 1 y lo
   ocupaba `shogun-status` (id 871789), que filtraba por los tags `critical` y
   `cloudflare` — tags que ningún check tiene, así que llevaba tiempo vacío.
