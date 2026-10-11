@@ -9,7 +9,7 @@ products (Shogunito, Ciaobox, AIDRA, Strong Core). It has two halves:
   *why is everything slow?* (saturation). It serves the legacy endpoints
   (`/usage`, `/status`, …), an agent API (`/v1/*`, `/openapi.json`) and an MCP
   server (`/mcp`).
-- **`checkly/`**: the whole Checkly account as code (18 checks, a dashboard and a
+- **`checkly/`**: the whole Checkly account as code (19 checks, a dashboard and a
   status page).
 
 You will meet this repo either **operating the product** (through MCP or REST) or
@@ -112,7 +112,7 @@ client did.
 
 ## Checkly constraints (Hobby plan)
 
-- **Budget:** 10,000 API-check runs per month, currently ~6,570. A check costs
+- **Budget:** 10,000 API-check runs per month, currently ~7,300. A check costs
   about 1,460 runs/month at 30 min, 730 at 1 h and 243 at 3 h. `UrlMonitor`s are
   billed per unit (5 of 10 used), not per run.
 - **Groups override** their checks' `locations` and `retryStrategy`. Groups that

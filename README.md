@@ -17,7 +17,7 @@ It answers two questions:
   after the [17/09/2026 incident](POSTMORTEM-2026-09-17.md), when a satellite
   download saturated the VM while every quota stayed green.
 
-The repo also holds the whole Checkly account as code (`checkly/`): 18 checks
+The repo also holds the whole Checkly account as code (`checkly/`): 19 checks
 across the hosted products.
 
 ## Agent-first architecture
