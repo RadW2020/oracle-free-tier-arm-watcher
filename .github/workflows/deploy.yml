@@ -69,8 +69,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # POST y no GET: Coolify cambió el endpoint de deploy y desde entonces
+      # responde 405 a GET. Lo destapó el merge del PR #1 (11/10/2026): tests
+      # e imagen en verde, pero el despliegue no llegaba a dispararse.
       - name: Trigger Coolify Deployment
         run: |
-          curl --fail --request GET \
+          curl --fail --request POST \
             '${{ secrets.COOLIFY_WEBHOOK }}' \
             --header 'Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}'
