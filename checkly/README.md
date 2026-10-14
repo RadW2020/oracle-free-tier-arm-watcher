@@ -92,11 +92,16 @@ sea infalible.
 `sendDegraded: true` en el canal: los checks declaran `degradedResponseTime`,
 pero con el canal en `false` ese umbral no generaba ningún aviso.
 
-La escalación vive en `src/escalation.ts` y la usan los 19 checks, los 3
-grupos y el default de la config. Estaba duplicada literalmente en 8 ficheros
-y con `amount: 0`, o sea un único email por incidencia: si ese correo se
-perdía, la incidencia se perdía. Ahora avisa al primer fallo y recuerda 2
-veces cada 10 min mientras siga cayéndose.
+La escalación vive en `src/escalation.ts`. `standardEscalation` la usan 18
+checks, los 3 grupos y el default de la config. Estaba duplicada literalmente
+en 8 ficheros y con `amount: 0`, o sea un único email por incidencia: si ese
+correo se perdía, la incidencia se perdía. Ahora avisa al primer fallo y
+recuerda 2 veces cada 10 min mientras siga cayéndose.
+
+La excepción es OCI Ingress Throttle Drops, con `singleAlertEscalation` (un
+aviso, sin recordatorios). Lee los descartes de la hora anterior, así que
+cuando avisa la ráfaga ya ha pasado, y el dato no cambia hasta el run
+siguiente: los recordatorios sólo repetían el mismo email.
 
 Las specs de Playwright (`src/shogunito/*.spec.ts`) las referencian explícitamente
 sus constructs. Por eso `browserChecks.testMatch` apunta a `*.browser.spec.ts`
@@ -203,12 +208,13 @@ contra `/api/cron/weekly-close` y dispara una acción de negocio real.
 
 ## Pendiente
 
-- **`src/oci/ingress-throttle-drops.check.ts` está listo para desplegar.**
-  Requisitos comprobados el 11/10/2026: el watcher con `/v1` está en
-  producción y el techo de 20 Mbps de AIDRA también. El umbral es de 50.000
-  paquetes por hora y no `< 1`, porque OCI descarta algo casi a diario sin
-  impacto visible (el porqué, con datos, está en el propio check). El
-  `deploy --preview` muestra exactamente un *Create*. Ver
+- **`src/oci/ingress-throttle-drops.check.ts` está desplegado desde el
+  11/10/2026.** El umbral es de 50.000 paquetes por hora y no `< 1`, porque
+  OCI descarta algo casi a diario sin impacto visible (el porqué, con datos,
+  está en el propio check). Lo que lo ha disparado hasta ahora (12 y 13/10):
+  despliegues de Coolify, cuyos builds descargan a velocidad de línea porque
+  la limpieza diaria vacía el build cache, y las descargas de escenas de
+  AIDRA. Ninguno se notó en los checks de servicio. Ver
   `examples/agent-workflows/03-add-throttle-drops-check.md`.
 - **Los tres checks de cuota (`src/oci/`) degradan a 15 s, no a 5.** Vigilan
   la cuota, no la latencia, y el 11/10/2026 un tirón de red mandó «Degradation
