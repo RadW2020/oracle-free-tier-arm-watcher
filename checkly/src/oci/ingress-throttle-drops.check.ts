@@ -1,7 +1,7 @@
 import { ApiCheck, AssertionBuilder, Frequency } from 'checkly/constructs'
 import { raulEmailAlert } from '../alert-channels'
 import { crossRegionRetry, LOCATIONS } from '../retries'
-import { standardEscalation } from '../escalation'
+import { singleAlertEscalation } from '../escalation'
 
 /**
  * Que el próximo email diga la causa, no el síntoma (acción 3 del
@@ -34,6 +34,9 @@ import { standardEscalation } from '../escalation'
  * host, fueron ~81.000 en 6 minutos.
  *
  * Coste: 730 API runs/mes (de ~6.570 a ~7.300 de 10.000).
+ *
+ * Avisa una vez, sin recordatorios (`singleAlertEscalation`): cuando llega el
+ * email la ráfaga ya ha pasado, y el dato no cambia hasta el siguiente run.
  */
 new ApiCheck('oci-ingress-throttle-drops', {
   name: 'OCI Ingress Throttle Drops',
@@ -69,7 +72,7 @@ new ApiCheck('oci-ingress-throttle-drops', {
   alertChannels: [
     raulEmailAlert,
   ],
-  alertEscalationPolicy: standardEscalation,
+  alertEscalationPolicy: singleAlertEscalation,
   retryStrategy: crossRegionRetry,
   runParallel: false,
 })
