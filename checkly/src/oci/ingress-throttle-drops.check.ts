@@ -27,7 +27,10 @@ import { singleAlertEscalation } from '../escalation'
  * 11/10/2026, con /v1 ya en producción y el techo de 20 Mbps de AIDRA activo
  * (DOWNLOAD_RATE_LIMIT_MBPS=20). Aun así OCI descarta paquetes casi a diario:
  * 105 horas con descartes entre el 26/09 y el 11/10 (~6,5 al día), sobre todo
- * en el ciclo de las 05:15 CEST de AIDRA, con ~20.000/hora. El 10 y el
+ * a las 05:15 CEST, con ~20.000/hora. No es AIDRA, como se creyó: ese ciclo
+ * no descarga nada si no hay escena nueva (14/10). Coincide con la copia
+ * diaria de downtrace-db a S3 (03:15 UTC), que mete ~176 MB de entrada;
+ * probablemente Coolify vuelve a bajar su imagen helper, sin confirmar. El 10 y el
  * 11/10, en esas horas, ningún check de servicio pasó de 310 ms. Con `< 1`
  * esto habría avisado varias veces al día por algo que no se nota. Sólo 3
  * horas pasaron de 50.000 en esas dos semanas; el 17/09, el que sí tumbó el
