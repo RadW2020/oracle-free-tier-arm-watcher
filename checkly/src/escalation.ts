@@ -28,30 +28,3 @@ export const standardEscalation = AlertEscalationBuilder.runBasedEscalation(
     percentage: 10,
   },
 )
-
-/**
- * Un solo aviso por fallo, sin recordatorios. Para checks que miran hacia
- * atrás, como OCI Ingress Throttle Drops.
- *
- * Ese check corre cada hora y lee los descartes de la hora anterior, así que
- * cuando avisa la ráfaga ya ha terminado, y su valor no puede cambiar hasta el
- * siguiente run, una hora después. Con `standardEscalation`, los dos
- * recordatorios a los 10 y 20 min repetían el mismo dato: el 13/10/2026, dos
- * ráfagas de 6 y 20 min (un despliegue de Ciaobox y una descarga de AIDRA)
- * mandaron 8 emails.
- *
- * Perder este correo cuesta poco, al contrario que en un check de servicio: si
- * los descartes llegan a tumbar algo, ya avisan los checks de ese servicio.
- * La recuperación sigue llegando (`sendRecovery: true` en el canal).
- */
-export const singleAlertEscalation = AlertEscalationBuilder.runBasedEscalation(
-  1,
-  {
-    amount: 0,
-    interval: 5,
-  },
-  {
-    enabled: false,
-    percentage: 10,
-  },
-)
