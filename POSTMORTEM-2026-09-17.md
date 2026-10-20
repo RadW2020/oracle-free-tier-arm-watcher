@@ -2,7 +2,8 @@
 
 **Estado:** cerrado con mitigación desplegable (falta desplegar)
 **Detectado por:** Checkly (email) · **Duración del impacto:** ~17:13 → ~20:05 CEST
-**Escrito:** 18/09/2026
+**Escrito:** 18/09/2026 · **Revisado:** 20/10/2026 — la causa raíz de la §2
+no se sostiene con los datos minuto a minuto; ver la §7
 
 Todas las horas en **CEST** (UTC+2). Las consultas de OCI devuelven UTC; la
 conversión está hecha.
@@ -241,3 +242,68 @@ curl -s -u "admin:$GRAFANA_PASSWORD" --get \
 
 Nota de método: la API de Monitoring etiqueta cada bucket con el **final** del
 intervalo. El bucket `15:15` de una serie `[1m]` contiene 15:14:00–15:15:00.
+
+---
+
+## 7. Addendum (20/10/2026): los descartes no explican los síntomas
+
+Un mes después, con los descartes de OCI minuto a minuto y los resultados de
+Checkly delante, la §2 no se sostiene. Lo que sigue en pie es que el shaper
+descarta paquetes. Lo que no se sostiene es que eso tumbara los servicios.
+
+### El 17/09, minuto a minuto
+
+`VnicIngressDropsThrottle[1m]` del 17/09 tiene descartes en cuatro tramos:
+15:15–15:20, 17:20–17:33, 17:46–17:52 y 17:57–18:04 UTC. Los síntomas que
+mandaron los emails caen fuera de todos:
+
+| Síntoma (CEST → UTC) | Descartes en ese minuto |
+|---|---|
+| Fallo de Shogunito Web UI, 17:13:12 → 15:13 | 0 (empiezan a las 15:15) |
+| Degradación de Strong Core, 17:48 → 15:48 | 0 |
+| Degradación de las 19:13 → 17:13 | 0 |
+
+La §2 ya dejaba como «cabo suelto» el primero. Los otros dos tampoco cuadran.
+
+### La semana del 13 al 20/10
+
+- 42 runs de checks de servicio cayeron en minutos con descartes (hasta
+  120.000/min, durante despliegues de Coolify) y ninguna fue lenta: mediana de
+  1,0× su tiempo normal.
+- Las 25 runs lentas de la semana fueron todas en minutos **sin** descartes.
+  Casi todas el 13/10 de 14:13 a 16:20 UTC, en todos los servicios y desde
+  las dos ubicaciones, con el host en reposo (CPU 8 %, load 0,4, disco 0,4 %).
+  En esa ventana todos los contadores de la VNIC estaban a cero o en su ruido
+  de siempre. El handshake TCP pasó de 42 ms a 248–1.114 ms: 1.114 ms es un
+  SYN perdido y reenviado al segundo.
+
+Esa es la firma de la §1 («el handshake TCP pasó de 29 ms a 211–260 ms»): la
+pérdida de paquetes ocurre en el camino entre Checkly y Madrid, fuera de la
+VNIC, y no la ve ninguna métrica de OCI. Es la explicación más probable del
+17/09 también. No se puede confirmar, porque ese tramo no lo mide nada.
+
+### Qué es el shaper, mejor medido
+
+Corta **ráfagas**, no caudal medio: hay descartes con medias de 2–20 Mbps por
+minuto. Un servidor rápido que rellena una ventana TCP de varios MB de golpe
+pasa del cupo durante milisegundos. Por eso:
+
+- el techo de 20 Mbps de AIDRA no evita los descartes. Su token bucket lee el
+  socket despacio, pero la ventana deja pasar ráfagas. El 19/10 la descarga
+  iba a ~10 Mbps de media con ~10 % de pérdida durante 24 min, sin efecto en
+  ningún check;
+- descartan los despliegues de Coolify (hasta ~340.000 en una hora), las
+  subidas grandes de usuarios (19/10, 21:10 UTC: 33 ficheros, 341 MB en 95 s
+  a Shogunito, 323.000 en dos minutos) y la copia nocturna de downtrace-db.
+
+### Qué cambia
+
+- **OCI Ingress Throttle Drops deja de avisar** (sin canal de alertas). Sigue
+  corriendo, y su historial sirve para descartar la red de OCI cuando otro
+  check falle.
+- El techo de AIDRA se queda: no hace daño. Si algún día hiciera falta reducir
+  las ráfagas de verdad, la palanca es acotar la ventana TCP del contenedor
+  (`sysctls: net.ipv4.tcp_rmem`, que es por espacio de red), no leer más despacio.
+- La pérdida en el camino no se arregla desde la VM. Los checks de servicio ya
+  reintentan desde la otra ubicación (`crossRegionRetry`).
+

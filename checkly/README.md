@@ -98,10 +98,10 @@ en 8 ficheros y con `amount: 0`, o sea un único email por incidencia: si ese
 correo se perdía, la incidencia se perdía. Ahora avisa al primer fallo y
 recuerda 2 veces cada 10 min mientras siga cayéndose.
 
-La excepción es OCI Ingress Throttle Drops, con `singleAlertEscalation` (un
-aviso, sin recordatorios). Lee los descartes de la hora anterior, así que
-cuando avisa la ráfaga ya ha pasado, y el dato no cambia hasta el run
-siguiente: los recordatorios sólo repetían el mismo email.
+La excepción es OCI Ingress Throttle Drops, que no tiene canal: no avisa.
+Medido el 20/10/2026, los descartes del shaper de OCI no degradaron ningún
+servicio, y aparecen con cada despliegue, descarga o subida grande. El check
+sigue corriendo para consultar su historial cuando otro falle.
 
 Las specs de Playwright (`src/shogunito/*.spec.ts`) las referencian explícitamente
 sus constructs. Por eso `browserChecks.testMatch` apunta a `*.browser.spec.ts`
@@ -208,13 +208,12 @@ contra `/api/cron/weekly-close` y dispara una acción de negocio real.
 
 ## Pendiente
 
-- **`src/oci/ingress-throttle-drops.check.ts` está desplegado desde el
-  11/10/2026.** El umbral es de 50.000 paquetes por hora y no `< 1`, porque
-  OCI descarta algo casi a diario sin impacto visible (el porqué, con datos,
-  está en el propio check). Lo que lo ha disparado hasta ahora (12 y 13/10):
-  despliegues de Coolify, cuyos builds descargan a velocidad de línea porque
-  la limpieza diaria vacía el build cache, y las descargas de escenas de
-  AIDRA. Ninguno se notó en los checks de servicio. Ver
+- **`src/oci/ingress-throttle-drops.check.ts` corre sin avisar desde el
+  20/10/2026.** Lo que lo dispara: despliegues de Coolify, cuyos builds
+  descargan a velocidad de línea porque la limpieza diaria vacía el build
+  cache; descargas de escenas de AIDRA; subidas grandes a Shogunito. En 7 días
+  ningún check de servicio fue lento en un minuto con descartes; los datos
+  están en el propio check y en el addendum de `POSTMORTEM-2026-09-17.md`. Ver
   `examples/agent-workflows/03-add-throttle-drops-check.md`.
 - **Los tres checks de cuota (`src/oci/`) degradan a 15 s, no a 5.** Vigilan
   la cuota, no la latencia, y el 11/10/2026 un tirón de red mandó «Degradation
