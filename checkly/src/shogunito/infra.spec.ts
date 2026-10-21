@@ -4,7 +4,14 @@ import { getAPIResponseTime, markCheckAsDegraded } from '@checkly/playwright-hel
 const API_URL = process.env.API_URL || 'https://api.your-domain.com';
 const WEB_URL = process.env.WEB_URL || 'https://your-domain.com';
 
-const RESPONSE_TIME_THRESHOLD = 800; // ms
+// 6 s y no 800 ms: este check mira que la infraestructura responda, y la
+// latencia fina ya la vigilan los checks propios de cada servicio. El
+// 20/10/2026 una sola petición a shogunitominio tardó 5.178 ms (5 s más lo
+// normal, la firma de un reintento de DNS) con el host en reposo y MinIO a
+// 214 ms en su propio check, y el umbral de 800 ms lo convirtió en un aviso.
+// Por encima de esos 5 s del reintento de DNS, para que un paquete perdido
+// camino del DNS no avise; lo que tarde más de 6 s sí es lentitud de verdad.
+const RESPONSE_TIME_THRESHOLD = 6000; // ms
 
 test('Shogunito Infrastructure Health', async ({ request }) => {
   // ── Step 1: API Core Health ────────────────────────────────────────
